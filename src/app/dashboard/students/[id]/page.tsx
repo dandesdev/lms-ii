@@ -21,19 +21,17 @@ export default async function StudentDetailPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const { data: student } = await supabase
-    .from("students")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
+  // Fetch in parallel and skip heavy columns (markdown_source can be huge).
+  const [{ data: student }, { data: classes }] = await Promise.all([
+    supabase.from("students").select("id, name, level").eq("id", id).maybeSingle(),
+    supabase
+      .from("classes")
+      .select("id, title, source_filename, status, updated_at")
+      .eq("student_id", id)
+      .order("updated_at", { ascending: false }),
+  ]);
 
   if (!student) notFound();
-
-  const { data: classes } = await supabase
-    .from("classes")
-    .select("*")
-    .eq("student_id", id)
-    .order("updated_at", { ascending: false });
 
   return (
     <main className="min-h-screen bg-[#f5f0e6]">

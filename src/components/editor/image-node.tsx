@@ -8,6 +8,7 @@ import type {
   NodeKey,
   SerializedLexicalNode,
   Spread,
+  ElementFormatType,
 } from "lexical";
 import {
   $applyNodeReplacement,
@@ -15,6 +16,15 @@ import {
   type DOMConversionOutput,
 } from "lexical";
 import type { JSX } from "react";
+import { ImageComponent } from "./image-component";
+
+/** Normalized crop rectangle in image-space fractions (0–1). */
+export type ImageCrop = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
 
 export type SerializedImageNode = Spread<
   {
@@ -22,6 +32,8 @@ export type SerializedImageNode = Spread<
     src: string;
     width?: number;
     height?: number;
+    align?: ElementFormatType;
+    crop?: ImageCrop;
   },
   SerializedLexicalNode
 >;
@@ -31,6 +43,8 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
   __altText: string;
   __width: number | undefined;
   __height: number | undefined;
+  __align: ElementFormatType;
+  __crop: ImageCrop | null;
 
   static getType(): string {
     return "image";
@@ -42,6 +56,8 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
       node.__altText,
       node.__width,
       node.__height,
+      node.__align,
+      node.__crop,
       node.__key
     );
   }
@@ -52,6 +68,8 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
       altText: serializedNode.altText,
       width: serializedNode.width,
       height: serializedNode.height,
+      align: serializedNode.align,
+      crop: serializedNode.crop,
     });
   }
 
@@ -63,6 +81,8 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
       type: "image",
       version: 1,
       width: this.__width,
+      align: this.__align,
+      crop: this.__crop ?? undefined,
     };
   }
 
@@ -71,6 +91,8 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
     altText: string,
     width?: number,
     height?: number,
+    align: ElementFormatType = "left",
+    crop: ImageCrop | null = null,
     key?: NodeKey
   ) {
     super(key);
@@ -78,11 +100,13 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
     this.__altText = altText;
     this.__width = width;
     this.__height = height;
+    this.__align = align;
+    this.__crop = crop;
   }
 
   createDOM(_config: EditorConfig): HTMLElement {
     const span = document.createElement("span");
-    span.className = "editor-image";
+    span.className = "block max-w-full";
     return span;
   }
 
@@ -90,21 +114,27 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
     return false;
   }
 
+  isInline(): false {
+    return false;
+  }
+
   exportDOM(): DOMExportOutput {
     const img = document.createElement("img");
     img.setAttribute("src", this.__src);
     img.setAttribute("alt", this.__altText);
+    if (this.__width) img.setAttribute("width", String(this.__width));
     return { element: img };
   }
 
   static importDOM(): DOMConversionMap | null {
     return {
       img: () => ({
-        conversion: (domNode) => {
+        conversion: (domNode): DOMConversionOutput | null => {
           const img = domNode as HTMLImageElement;
           const node = $createImageNode({
             src: img.getAttribute("src") || "",
             altText: img.getAttribute("alt") || "",
+            width: img.width || undefined,
           });
           return { node };
         },
@@ -113,17 +143,56 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
     };
   }
 
+  getSrc(): string {
+    return this.__src;
+  }
+
+  getAltText(): string {
+    return this.__altText;
+  }
+
+  getWidth(): number | undefined {
+    return this.__width;
+  }
+
+  getHeight(): number | undefined {
+    return this.__height;
+  }
+
+  getAlign(): ElementFormatType {
+    return this.__align;
+  }
+
+  getCrop(): ImageCrop | null {
+    return this.__crop;
+  }
+
+  setWidthAndHeight(width: number, height?: number): void {
+    const writable = this.getWritable();
+    writable.__width = width;
+    writable.__height = height;
+  }
+
+  setAlign(align: ElementFormatType): void {
+    const writable = this.getWritable();
+    writable.__align = align;
+  }
+
+  setCrop(crop: ImageCrop | null): void {
+    const writable = this.getWritable();
+    writable.__crop = crop;
+  }
+
   decorate(): JSX.Element {
     return (
-      <img
+      <ImageComponent
         src={this.__src}
-        alt={this.__altText}
-        className="my-4 max-w-full rounded-md"
-        style={{
-          width: this.__width,
-          height: this.__height,
-        }}
-        draggable={false}
+        altText={this.__altText}
+        width={this.__width}
+        height={this.__height}
+        align={this.__align}
+        crop={this.__crop}
+        nodeKey={this.__key}
       />
     );
   }
@@ -134,13 +203,19 @@ export function $createImageNode({
   altText,
   width,
   height,
+  align,
+  crop,
 }: {
   src: string;
   altText: string;
   width?: number;
   height?: number;
+  align?: ElementFormatType;
+  crop?: ImageCrop;
 }): ImageNode {
-  return $applyNodeReplacement(new ImageNode(src, altText, width, height));
+  return $applyNodeReplacement(
+    new ImageNode(src, altText, width, height, align ?? "left", crop ?? null)
+  );
 }
 
 export function $isImageNode(

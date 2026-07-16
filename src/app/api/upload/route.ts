@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
+
+const BUCKET = "class-images";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -22,9 +24,20 @@ export async function POST(request: Request) {
   const ext = file.name.split(".").pop() || "png";
   const path = `${classId}/${Date.now()}.${ext}`;
 
-  const { error: uploadError } = await supabase.storage
-    .from("class-images")
-    .upload(path, file, { upsert: false });
+  // Storage writes go through the service role — the bucket has no RLS
+  // policies for end users, so user-scoped uploads are rejected.
+  const storage = createServiceClient().storage;
+
+  let { error: uploadError } = await storage
+    .from(BUCKET)
+    .upload(path, file, { upsert: false, contentType: file.type || undefined });
+
+  if (uploadError && /bucket not found/i.test(uploadError.message)) {
+    await storage.createBucket(BUCKET, { public: true });
+    ({ error: uploadError } = await storage
+      .from(BUCKET)
+      .upload(path, file, { upsert: false, contentType: file.type || undefined }));
+  }
 
   if (uploadError) {
     return NextResponse.json({ error: uploadError.message }, { status: 500 });
@@ -32,7 +45,7 @@ export async function POST(request: Request) {
 
   const {
     data: { publicUrl },
-  } = supabase.storage.from("class-images").getPublicUrl(path);
+  } = storage.from(BUCKET).getPublicUrl(path);
 
   return NextResponse.json({ url: publicUrl });
 }

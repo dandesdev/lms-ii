@@ -64,7 +64,10 @@ Open [http://localhost:3000](http://localhost:3000).
 1. Push the repo and import the `lms` folder as a Vercel project (root directory: `lms`)
 2. Add the same environment variables in Vercel
 3. Set `NEXT_PUBLIC_APP_URL` to your production URL
-4. In Supabase Auth settings, add your Vercel URL to redirect allowlist
+4. In Supabase Auth settings → URL Configuration, add redirect allowlist entries for:
+   - `{NEXT_PUBLIC_APP_URL}/auth/callback`
+   - `{NEXT_PUBLIC_APP_URL}/auth/callback?next=/reset-password`
+   (or a wildcard like `{NEXT_PUBLIC_APP_URL}/**`)
 
 ## Workflow
 
@@ -85,6 +88,8 @@ Open [http://localhost:3000](http://localhost:3000).
 | `/c/[shareToken]` | Anyone (if published) | Guest collaborative editor |
 | `/student` | Student | Published class list |
 | `/login` | Everyone | Auth |
+| `/forgot-password` | Everyone | Request password reset email |
+| `/reset-password` | Recovery session | Set a new password after email link |
 
 ## Notes
 

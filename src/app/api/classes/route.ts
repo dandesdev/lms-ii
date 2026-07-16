@@ -5,6 +5,7 @@ import {
   extractTitleFromMarkdown,
   filenameToTitle,
 } from "@/lib/utils";
+import { canonicalCollabRoomId } from "@/lib/collab-room";
 import { randomUUID } from "crypto";
 
 export async function GET(request: Request) {
@@ -68,7 +69,7 @@ export async function POST(request: Request) {
       : "Untitled Class";
     const title = extractTitleFromMarkdown(markdown, fallbackTitle);
     const classId = randomUUID();
-    const roomId = `class-${classId}`;
+    const roomId = canonicalCollabRoomId(classId);
 
     const supabase = await createClient();
     const { data, error } = await supabase

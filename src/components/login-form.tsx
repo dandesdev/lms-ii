@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -84,6 +85,16 @@ export function LoginForm({ next }: { next?: string }) {
             {mode === "login" ? "Sign in" : "Create account"}
           </Button>
         </form>
+        {mode === "login" && (
+          <p className="mt-3 text-center text-sm text-[#6b6558]">
+            <Link
+              href="/forgot-password"
+              className="font-medium text-[#1e4d3a] underline"
+            >
+              Forgot password?
+            </Link>
+          </p>
+        )}
         <p className="mt-3 text-center text-sm text-[#6b6558]">
           {mode === "login" ? "New here?" : "Already have an account?"}{" "}
           <button
