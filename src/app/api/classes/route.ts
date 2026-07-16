@@ -6,6 +6,7 @@ import {
   filenameToTitle,
 } from "@/lib/utils";
 import { canonicalCollabRoomId } from "@/lib/collab-room";
+import { ensureCollabRoomSeeded } from "@/lib/seed-collab-yjs";
 import { randomUUID } from "crypto";
 
 export async function GET(request: Request) {
@@ -87,6 +88,13 @@ export async function POST(request: Request) {
       .single();
 
     if (error) throw error;
+
+    try {
+      await ensureCollabRoomSeeded(roomId, markdown);
+    } catch (err) {
+      console.warn("[classes] seed on create ignored", err);
+    }
+
     return NextResponse.json(data);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Error";

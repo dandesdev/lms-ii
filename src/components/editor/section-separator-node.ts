@@ -1,5 +1,3 @@
-"use client";
-
 import type {
   DOMConversionMap,
   DOMConversionOutput,
@@ -10,12 +8,7 @@ import type {
   SerializedLexicalNode,
   Spread,
 } from "lexical";
-import {
-  $applyNodeReplacement,
-  $createParagraphNode,
-  DecoratorNode,
-} from "lexical";
-import { $isEditorSectionNode } from "./editor-section-node";
+import { $applyNodeReplacement, DecoratorNode } from "lexical";
 
 export type SerializedSectionSeparatorNode = Spread<
   { type: "section-separator" },
@@ -23,8 +16,9 @@ export type SerializedSectionSeparatorNode = Spread<
 >;
 
 /**
- * Root-level `---` between EditorSectionNodes. Delete merges next→prev
- * (top color wins).
+ * Root-level `---` between EditorSectionNodes.
+ * Merging adjacent sections is handled by SectionMergePlugin (not remove()),
+ * so undo/remote sync stay consistent.
  */
 export class SectionSeparatorNode extends DecoratorNode<null> {
   static getType(): string {
@@ -88,24 +82,6 @@ export class SectionSeparatorNode extends DecoratorNode<null> {
 
   decorate(): null {
     return null;
-  }
-
-  remove(preserveEmptyParent?: boolean): void {
-    const prev = this.getPreviousSibling();
-    const next = this.getNextSibling();
-    if ($isEditorSectionNode(prev) && $isEditorSectionNode(next)) {
-      const movable = [...next.getChildren()];
-      for (const child of movable) {
-        prev.append(child);
-      }
-      next.remove();
-      super.remove(preserveEmptyParent);
-      if (prev.getChildrenSize() === 0) {
-        prev.append($createParagraphNode());
-      }
-      return;
-    }
-    super.remove(preserveEmptyParent);
   }
 }
 

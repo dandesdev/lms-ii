@@ -299,20 +299,39 @@ export function $splitSectionAtBlock(block: ElementNode): void {
   nextSection.selectStart();
 }
 
+/**
+ * When two EditorSectionNodes sit adjacent (separator deleted via local edit,
+ * undo, or remote sync), merge next → prev. Prev style wins (top color).
+ * Returns true if a merge ran (transforms re-run until stable).
+ */
+export function $mergeAdjacentEditorSections(): boolean {
+  const root = $getRoot();
+  const children = root.getChildren();
+  for (let i = 0; i < children.length - 1; i++) {
+    const prev = children[i];
+    const next = children[i + 1];
+    if (!$isEditorSectionNode(prev) || !$isEditorSectionNode(next)) continue;
+
+    const movable = [...next.getChildren()];
+    for (const child of movable) {
+      prev.append(child);
+    }
+    next.remove();
+    if (prev.getChildrenSize() === 0) {
+      prev.append($createParagraphNode());
+    }
+    return true;
+  }
+  return false;
+}
+
+/** Remove separator; SectionMergePlugin merges the now-adjacent sections. */
 export function $mergeSectionsAroundSeparator(
-  prev: EditorSectionNode,
-  next: EditorSectionNode,
+  _prev: EditorSectionNode,
+  _next: EditorSectionNode,
   separator: SectionSeparatorNode
 ): void {
-  const movable = [...next.getChildren()];
-  for (const child of movable) {
-    prev.append(child);
-  }
-  next.remove();
   separator.remove();
-  if (prev.getChildrenSize() === 0) {
-    prev.append($createParagraphNode());
-  }
 }
 
 /** @deprecated */

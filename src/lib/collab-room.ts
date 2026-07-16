@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { getLiveblocksClient } from "@/lib/liveblocks";
+import { ensureCollabRoomSeeded } from "@/lib/seed-collab-yjs";
 
 /**
  * Collab schema epochs:
@@ -9,7 +10,7 @@ import { getLiveblocksClient } from "@/lib/liveblocks";
  * - sec2: section wrappers; shouldBootstrap false; seed is sole first write
  *
  * Bumping the room id abandons incompatible Yjs history. Next open reseeds
- * from markdown_source into the new empty room.
+ * from markdown_source into the new empty room (server-side when possible).
  */
 export const COLLAB_ROOM_EPOCH = "sec2";
 
@@ -25,15 +26,26 @@ export function isCanonicalCollabRoomId(
 }
 
 /**
- * If the class still points at a pre-flat Liveblocks room, rewrite the room id
- * (service role) and best-effort delete the old room.
+ * If the class still points at a pre-epoch Liveblocks room, rewrite the room id
+ * (service role) and best-effort delete the old room. Optionally seed the new
+ * empty room from markdown.
  */
 export async function ensureCanonicalCollabRoomId(
   classId: string,
-  currentRoomId: string
+  currentRoomId: string,
+  markdownSource?: string | null
 ): Promise<string> {
   const canonical = canonicalCollabRoomId(classId);
-  if (currentRoomId === canonical) return currentRoomId;
+  if (currentRoomId === canonical) {
+    if (markdownSource !== undefined) {
+      try {
+        await ensureCollabRoomSeeded(canonical, markdownSource);
+      } catch (err) {
+        console.warn("[collab-room] seed ignored", err);
+      }
+    }
+    return currentRoomId;
+  }
 
   const supabase = createServiceClient();
   const { error } = await supabase
@@ -56,5 +68,14 @@ export async function ensureCanonicalCollabRoomId(
   console.warn(
     `[collab-room] migrated ${classId}: ${currentRoomId} → ${canonical}`
   );
+
+  if (markdownSource !== undefined) {
+    try {
+      await ensureCollabRoomSeeded(canonical, markdownSource);
+    } catch (err) {
+      console.warn("[collab-room] seed after migrate ignored", err);
+    }
+  }
+
   return canonical;
 }

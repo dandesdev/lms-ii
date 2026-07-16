@@ -12,6 +12,8 @@ export {
   $getSectionBlocksAtCursor,
   $getTopLevelSectionNode,
   $isLegacyFlatDocument,
+  $mergeAdjacentEditorSections,
+  $mergeSectionsAroundSeparator,
   $normalizeRootIntoSections,
   $reparentSectionSeparator,
   $splitSectionAtBlock,

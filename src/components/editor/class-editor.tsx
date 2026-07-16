@@ -44,6 +44,7 @@ import { EditorSectionNode } from "./editor-section-node";
 import { SectionSeparatorNode } from "./section-separator-node";
 import { SectionStylePlugin } from "./format-plugins";
 import { ListExitPlugin } from "./list-exit-plugin";
+import { SectionMergePlugin } from "./section-merge-plugin";
 import {
   EditorToolbar,
   useToolbarDock,
@@ -224,6 +225,7 @@ function EditorInner({
       {!readOnly && <ListExitPlugin />}
       <TablePlugin />
       <SectionStylePlugin />
+      <SectionMergePlugin />
       {!readOnly && (
         <>
           <SectionAwareMarkdownShortcutPlugin

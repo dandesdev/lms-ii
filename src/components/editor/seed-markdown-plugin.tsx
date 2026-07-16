@@ -13,12 +13,8 @@ import { $normalizeRootIntoSections } from "./section-utils";
 const SEED_TRANSFORMERS = [SECTION_SEPARATOR, TABLE, ...TRANSFORMERS];
 
 /**
- * Sole first-write into an empty collab room:
- * 1) import markdown (clears root)
- * 2) wrap into EditorSectionNodes in the same update
- *
- * Must run only when the Yjs doc is empty — ClassLiveblocksPlugin uses
- * shouldBootstrap={false} so we never fight a prior bootstrap tree.
+ * Fallback first-write if the server seed did not run (or room is still empty).
+ * Prefer ensureCollabRoomSeeded on the server so clients rarely hit this path.
  */
 export function SeedMarkdownPlugin({
   markdown,

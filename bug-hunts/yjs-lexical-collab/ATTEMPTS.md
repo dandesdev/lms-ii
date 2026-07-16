@@ -2,7 +2,24 @@
 
 Append-only. Newest first.
 
+## 2026-07-16 — Try #14: Section merge transform + server-side Yjs seed
+
+**Context:** External review items 3–4.
+
+**Fix:**
+- Remove merge from `SectionSeparatorNode.remove()`; `SectionMergePlugin` RootNode transform calls `$mergeAdjacentEditorSections` (top style wins) for local/undo/remote deletes.
+- `src/lib/seed-collab-yjs.ts`: headless Lexical + `@lexical/yjs` → `sendYjsBinaryUpdate` when room Lexical root is empty.
+- Called from `ensureCanonicalCollabRoomId` (with markdown), class create, reset-collab, and class/share pages.
+- Client `SeedMarkdownPlugin` kept as fallback only.
+
+**Expected:** Delete `---` merges sections; opening a class seeds on server so client rarely writes first.
+
+**Result:** pending verification
+
+---
+
 ## 2026-07-16 — Try #13: patch-package + log filter for residual Invalid access
+
 
 **Context:** External review confirmed residual `Invalid access` is upstream `@lexical/yjs` create-then-read noise (safe). Lexical PR deferred.
 

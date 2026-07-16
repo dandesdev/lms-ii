@@ -6,10 +6,11 @@ import {
   canonicalCollabRoomId,
   ensureCanonicalCollabRoomId,
 } from "@/lib/collab-room";
+import { ensureCollabRoomSeeded } from "@/lib/seed-collab-yjs";
 
 /**
  * Force a clean collab room for this class:
- * migrate to the canonical flat-epoch room id and delete any old room.
+ * migrate to the canonical room id, delete Yjs, then reseed from markdown.
  */
 export async function POST(
   _request: Request,
@@ -22,7 +23,7 @@ export async function POST(
     const supabase = await createClient();
     const { data: classRecord, error } = await supabase
       .from("classes")
-      .select("id, liveblocks_room_id")
+      .select("id, liveblocks_room_id, markdown_source")
       .eq("id", id)
       .maybeSingle();
 
@@ -36,12 +37,10 @@ export async function POST(
       previousRoomId
     );
 
-    // If already on canonical id, still wipe Yjs by deleting + leaving empty.
     const liveblocks = getLiveblocksClient();
     if (roomId === previousRoomId) {
       await liveblocks.deleteRoom(roomId);
-    } else if (roomId !== previousRoomId) {
-      // ensureCanonical already deleted previous; also clear canonical if it existed
+    } else {
       try {
         await liveblocks.deleteRoom(roomId);
       } catch {
@@ -49,15 +48,16 @@ export async function POST(
       }
     }
 
-    // Ensure DB points at canonical even after a wipe-only call
     const canonical = canonicalCollabRoomId(classRecord.id);
     if (roomId !== canonical) {
       await ensureCanonicalCollabRoomId(classRecord.id, roomId);
     }
 
+    await ensureCollabRoomSeeded(canonical, classRecord.markdown_source);
+
     return NextResponse.json({
       ok: true,
-      roomId: canonicalCollabRoomId(classRecord.id),
+      roomId: canonical,
       previousRoomId,
     });
   } catch (err) {

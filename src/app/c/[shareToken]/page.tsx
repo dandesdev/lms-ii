@@ -19,7 +19,8 @@ export default async function ShareClassPage({
 
   const roomId = await ensureCanonicalCollabRoomId(
     classRecord.id,
-    classRecord.liveblocks_room_id
+    classRecord.liveblocks_room_id,
+    classRecord.markdown_source
   );
 
   return (
