@@ -27,8 +27,8 @@
   --color-input: #ddd0b6;
   --color-ring: #1e4d3a;
 
-  --color-editor-canvas: #fffdf8;
-  --color-editor-ink: #3d3527;
+  --color-editor-canvas: #ffffff;
+  --color-editor-ink: #000000;
   --color-editor-chrome: #e0d6c2;
   --color-editor-table-cell: color-mix(in srgb, var(--color-card) 60%, transparent);
   --color-editor-table-header: var(--color-secondary);
@@ -92,6 +92,9 @@
   min-height: calc(100vh - 3.5rem);
   padding-inline: 0;
   padding-block: 0;
+  background-color: var(--color-editor-canvas);
+  color: var(--color-editor-ink);
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
 }
 
 @utility editor-toolbar-vertical {
@@ -119,15 +122,37 @@
 }
 
 @utility editor-toolbar-horizontal {
-  @apply z-20 flex w-full flex-wrap items-center gap-2 border-b border-editor-chrome bg-editor-canvas/95 px-3 py-2 backdrop-blur;
+  @apply z-20 flex w-full shrink-0 flex-wrap items-center gap-2 border-b border-editor-chrome bg-editor-canvas/95 px-3 py-2 backdrop-blur;
 }
 
 @utility editor-toolbar-btn {
-  @apply flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-editor-ink transition-colors hover:bg-accent disabled:opacity-40 disabled:hover:bg-transparent;
+  @apply flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-editor-ink transition-colors hover:bg-accent disabled:opacity-40 disabled:hover:bg-transparent;
 }
 
 @utility editor-toolbar-btn-active {
   @apply bg-accent;
+}
+
+/**
+ * Floating control surface (publish bar + Mark Up tools).
+ * Soft rounded rectangle — not a pill — so inner square buttons stay independent.
+ * Always horizontal; radius ~14px; padding 6px; gap 8px.
+ */
+@utility editor-float-palette {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 14px;
+  border-width: 1px;
+  border-color: var(--color-editor-chrome);
+  background-color: color-mix(in srgb, var(--color-editor-canvas) 95%, transparent);
+  padding: 0.375rem;
+  box-shadow:
+    0 1px 2px rgba(34, 29, 21, 0.06),
+    0 6px 16px rgba(34, 29, 21, 0.08);
+  backdrop-filter: blur(8px);
 }
 
 @layer components {
@@ -144,6 +169,15 @@
     min-height: 3rem;
     padding-inline: var(--content-pad);
     padding-block: 1rem;
+  }
+
+  /* Extra breathing room at the start and end of the document. */
+  .editor-content > .editor-section:first-of-type {
+    padding-top: 100px;
+  }
+
+  .editor-content > .editor-section:last-of-type {
+    padding-bottom: 100px;
   }
 
   .editor-content > .editor-section.editor-section-colored {
@@ -189,7 +223,33 @@
     @apply min-w-24 border border-border bg-editor-table-header px-3 py-1.5 text-left align-top font-semibold text-editor-ink break-words;
   }
 
+  /* Cell-range selection: hide native text selection, paint whole cells. */
+  .editor-content .editor-table-selection *::selection {
+    background-color: transparent;
+  }
+
+  .editor-content .editor-table-cell-selected {
+    position: relative;
+    caret-color: transparent;
+  }
+
+  .editor-content .editor-table-cell-selected::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-color: color-mix(in srgb, var(--color-primary) 22%, transparent);
+  }
+
   .editor-content img {
     @apply block max-w-full;
+  }
+
+  /* Markers travel with text-align (center/right/justify). */
+  .editor-content ul,
+  .editor-content ol {
+    list-style-position: inside;
+    padding-inline-start: 0;
+    margin-inline-start: 0;
   }
 }

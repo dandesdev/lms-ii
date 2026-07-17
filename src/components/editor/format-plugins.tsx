@@ -9,9 +9,10 @@ import {
   $isNodeSelection,
   $setSelection,
   $isElementNode,
-  FORMAT_ELEMENT_COMMAND,
   SELECTION_CHANGE_COMMAND,
   COMMAND_PRIORITY_CRITICAL,
+  TextNode,
+  type BaseSelection,
   type RangeSelection,
   type ElementNode,
   type ElementFormatType,
@@ -21,6 +22,7 @@ import {
   $getSelectionStyleValueForProperty,
 } from "@lexical/selection";
 import { $getNearestBlockElementAncestorOrThrow, mergeRegister } from "@lexical/utils";
+import { $isTableSelection, type TableSelection } from "@lexical/table";
 import {
   AlignCenter,
   AlignJustify,
@@ -32,7 +34,13 @@ import {
   PaintBucket,
   Square,
 } from "lucide-react";
-import { ColorPickerPopover, ColorPalette } from "./color-picker";
+import {
+  ColorPickerPopover,
+  ColorPalette,
+  CornerSplitButton,
+  SplitColorButton,
+} from "./color-picker";
+import { useEditorColors } from "./editor-colors-context";
 import { $isImageNode } from "./image-node";
 import {
   applyBlockVisualToDom,
@@ -43,32 +51,43 @@ import {
 } from "./block-style";
 import { $isEditorSectionNode } from "./editor-section-node";
 import { $applySectionBackgroundAtCursor } from "./section-utils";
-import { useToolbarUi, ToolbarPopover } from "./toolbar-ui";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { ToolbarPopover } from "./toolbar-ui";
 import { cn } from "@/lib/utils";
 
+/** Default ink written onto TextNode styles (and shown by the color tool). */
+export const DEFAULT_TEXT_COLOR = "#000000";
+
+function textStyleHasColor(style: string): boolean {
+  return /(?:^|;)\s*color\s*:/i.test(style);
+}
+
+function $isTextStylingSelection(
+  sel: BaseSelection | null
+): sel is RangeSelection | TableSelection {
+  return $isRangeSelection(sel) || $isTableSelection(sel);
+}
+
 /**
- * Keeps the last real range selection alive so toolbar popovers (color
+ * Keeps the last real range/table selection alive so toolbar popovers (color
  * pickers, font menu) still know what to style after the editor loses focus.
  */
 export function useStyledSelection() {
   const [editor] = useLexicalComposerContext();
-  const savedSelection = useRef<RangeSelection | null>(null);
+  const savedSelection = useRef<RangeSelection | TableSelection | null>(null);
   const [styles, setStyles] = useState<Record<string, string>>({});
 
   useEffect(() => {
     return editor.registerUpdateListener(({ editorState }) => {
       editorState.read(() => {
         const sel = $getSelection();
-        if ($isRangeSelection(sel)) {
+        if ($isTextStylingSelection(sel)) {
           savedSelection.current = sel.clone();
           setStyles({
-            color: $getSelectionStyleValueForProperty(sel, "color", ""),
+            color: $getSelectionStyleValueForProperty(
+              sel,
+              "color",
+              DEFAULT_TEXT_COLOR
+            ),
             background: $getSelectionStyleValueForProperty(
               sel,
               "background-color",
@@ -82,10 +101,14 @@ export function useStyledSelection() {
   }, [editor]);
 
   const withSelection = useCallback(
-    (fn: (selection: RangeSelection) => void) => {
+    (fn: (selection: RangeSelection | TableSelection) => void) => {
       editor.update(() => {
         let sel = $getSelection();
-        if (!$isRangeSelection(sel) && savedSelection.current) {
+        // Restore the last usable selection if focus was lost (null) or the
+        // current selection can't be styled. Never replace an active
+        // TableSelection with an older RangeSelection — that was dropping
+        // multi-cell formatting down to the drag-start cell only.
+        if (!$isTextStylingSelection(sel) && savedSelection.current) {
           try {
             $setSelection(savedSelection.current.clone());
             sel = $getSelection();
@@ -93,7 +116,7 @@ export function useStyledSelection() {
             return;
           }
         }
-        if ($isRangeSelection(sel)) fn(sel);
+        if ($isTextStylingSelection(sel)) fn(sel);
       });
     },
     [editor]
@@ -103,16 +126,35 @@ export function useStyledSelection() {
 }
 
 function forEachSelectedBlock(
-  sel: RangeSelection,
+  sel: RangeSelection | TableSelection,
   fn: (block: ElementNode) => void
 ) {
   const blocks = new Set<ElementNode>();
   for (const node of sel.getNodes()) {
     try {
-      const block = $getNearestBlockElementAncestorOrThrow(node);
+      if ($isElementNode(node) && node.getType() === "tablerow") continue;
+      const block = $getNearestBlockElementAncestorOrThrow(
+        $isElementNode(node) && node.getType() === "tablecell"
+          ? node.getFirstChild() ?? node
+          : node
+      );
       if ($isElementNode(block)) blocks.add(block);
     } catch {
       // node without a block ancestor — skip
+    }
+  }
+  // Table cells: also walk every text-bearing block inside each selected cell.
+  if ($isTableSelection(sel)) {
+    for (const node of sel.getNodes()) {
+      if (node.getType() !== "tablecell" || !$isElementNode(node)) continue;
+      for (const t of node.getAllTextNodes()) {
+        try {
+          const block = $getNearestBlockElementAncestorOrThrow(t);
+          if ($isElementNode(block)) blocks.add(block);
+        } catch {
+          /* skip */
+        }
+      }
     }
   }
   for (const block of blocks) fn(block);
@@ -123,33 +165,61 @@ function forEachSelectedBlock(
 /* ------------------------------------------------------------------ */
 
 export function TextColorButton() {
-  const { withSelection, styles } = useStyledSelection();
+  const { withSelection } = useStyledSelection();
+  const { textColor, setTextColor } = useEditorColors();
   return (
-    <ColorPickerPopover
+    <SplitColorButton
       name="Text color"
       icon={<Baseline className="h-4 w-4" />}
-      active={styles.color || null}
-      onPick={(color) => withSelection((sel) => $patchStyleText(sel, { color }))}
+      defaultColor={textColor}
+      onApply={(color) => withSelection((sel) => $patchStyleText(sel, { color }))}
+      onDefaultChange={setTextColor}
       onClear={() =>
-        withSelection((sel) => $patchStyleText(sel, { color: null }))
+        withSelection((sel) =>
+          $patchStyleText(sel, { color: DEFAULT_TEXT_COLOR })
+        )
       }
-      clearLabel="Default color"
+      clearLabel="Default (black)"
     />
   );
 }
 
+/**
+ * Ensure every TextNode carries an explicit `color: #000000` when none is set,
+ * so the color tool underline and Yjs state match the visible default ink.
+ */
+export function DefaultTextColorPlugin() {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    return editor.registerNodeTransform(TextNode, (node) => {
+      const style = node.getStyle();
+      if (textStyleHasColor(style)) return;
+      node.setStyle(
+        style
+          ? `${style};color: ${DEFAULT_TEXT_COLOR}`
+          : `color: ${DEFAULT_TEXT_COLOR}`
+      );
+    });
+  }, [editor]);
+
+  return null;
+}
+
 export function HighlightColorButton() {
-  const { withSelection, styles } = useStyledSelection();
+  const { withSelection } = useStyledSelection();
+  const { highlightColor, setHighlightColor } = useEditorColors();
   return (
-    <ColorPickerPopover
+    <SplitColorButton
       name="Highlight color"
       icon={<Highlighter className="h-4 w-4" />}
-      active={styles.background || null}
-      onPick={(color) =>
+      defaultColor={highlightColor}
+      onApply={(color) =>
         withSelection((sel) =>
           $patchStyleText(sel, { "background-color": color })
         )
       }
+      onDefaultChange={setHighlightColor}
       onClear={() =>
         withSelection((sel) =>
           $patchStyleText(sel, { "background-color": null })
@@ -403,12 +473,13 @@ function normalizeAlignment(format: ElementFormatType | ""): ElementFormatType {
   }
 }
 
-/** Single dropdown showing the current alignment of the selected text. */
+/** Cycle button for alignment; small arrow opens the full dropdown. */
 export function AlignmentPicker() {
   const [editor] = useLexicalComposerContext();
-  const { dock, vertical } = useToolbarUi();
   const { withSelection } = useStyledSelection();
   const [active, setActive] = useState<ElementFormatType>("left");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     return mergeRegister(
@@ -453,50 +524,64 @@ export function AlignmentPicker() {
       }
     });
     if (!imageOnly) {
-      // The dropdown steals focus, so restore the saved selection instead of
-      // relying on FORMAT_ELEMENT_COMMAND reading the live one.
       withSelection((sel) => {
         forEachSelectedBlock(sel, (block) => {
           block.getWritable().setFormat(format);
+          // Align the list container too so markers move with the text.
+          const parent = block.getParent();
+          if (parent && parent.getType() === "list") {
+            parent.getWritable().setFormat(format);
+          }
         });
       });
     }
     setActive(format);
+    setMenuOpen(false);
+  };
+
+  const cycle = () => {
+    const idx = ALIGNMENTS.findIndex((a) => a.format === active);
+    const next = ALIGNMENTS[(idx + 1) % ALIGNMENTS.length];
+    apply(next.format);
   };
 
   const current = ALIGNMENTS.find((a) => a.format === active) ?? ALIGNMENTS[0];
   const CurrentIcon = current.icon;
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          title={`Alignment: ${current.label}`}
-          aria-label={`Alignment: ${current.label}`}
-          onMouseDown={(e) => e.preventDefault()}
-          className="editor-toolbar-btn data-[state=open]:bg-accent"
-        >
-          <CurrentIcon className="h-4 w-4" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        side={vertical ? (dock === "left" ? "right" : "left") : "bottom"}
-        align="start"
-        className="w-40 bg-popover"
+    <div ref={rootRef} className="relative inline-flex">
+      <CornerSplitButton
+        title={`${current.label} — click to cycle`}
+        dropdownTitle="Choose alignment"
+        dropdownOpen={menuOpen}
+        onMainClick={cycle}
+        onDropdownClick={() => setMenuOpen((o) => !o)}
+      >
+        <CurrentIcon className="h-4 w-4" />
+      </CornerSplitButton>
+      <ToolbarPopover
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        anchorRef={rootRef}
+        className="w-40 p-1"
       >
         {ALIGNMENTS.map(({ format, label, icon: Icon }) => (
-          <DropdownMenuItem
+          <button
             key={format}
-            onSelect={() => apply(format)}
-            className={cn(active === format && "bg-accent")}
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => apply(format)}
+            className={cn(
+              "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-accent",
+              active === format && "bg-accent"
+            )}
           >
-            <Icon className="mr-1 h-4 w-4" />
+            <Icon className="h-4 w-4" />
             {label}
-          </DropdownMenuItem>
+          </button>
         ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </ToolbarPopover>
+    </div>
   );
 }
 
@@ -505,14 +590,13 @@ export function AlignmentPicker() {
 /* ------------------------------------------------------------------ */
 
 const FONTS: Array<{ label: string; value: string | null }> = [
-  { label: "Default", value: null },
-  { label: "Inter", value: "Inter, sans-serif" },
+  { label: "Inter", value: null },
   { label: "Roboto", value: "Roboto, sans-serif" },
   { label: "Lobster", value: "Lobster, cursive" },
 ];
 
 function currentFontLabel(font: string): string {
-  if (!font) return "Font";
+  if (!font) return "Inter";
   const match = FONTS.find((f) => f.value && font.includes(f.label));
   return match?.label ?? "Font";
 }
@@ -568,7 +652,11 @@ export function FontFamilyPicker({ compact = false }: { compact?: boolean }) {
               "block w-full rounded-md px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-accent",
               label === font.label && "bg-accent"
             )}
-            style={font.value ? { fontFamily: font.value } : undefined}
+            style={
+              font.value
+                ? { fontFamily: font.value }
+                : { fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif" }
+            }
           >
             {font.label}
           </button>

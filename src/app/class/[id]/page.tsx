@@ -51,12 +51,13 @@ export default async function ClassPage({
   );
 
   return (
-    <main className="min-h-screen bg-[#fffdf8]">
+    <main className="min-h-screen bg-editor-canvas">
       <ClassEditor
         roomId={roomId}
         classId={classRecord.id}
         markdownSource={classRecord.markdown_source}
         backHref={isTeacher ? `/dashboard/students/${classRecord.student_id}` : "/student"}
+        enableMarkUpMode={isTeacher}
         toolbarRight={
           isTeacher ? (
             <PublishControls

@@ -24,7 +24,7 @@ export default async function ShareClassPage({
   );
 
   return (
-    <main className="min-h-screen bg-[#fffdf8]">
+    <main className="min-h-screen bg-editor-canvas">
       <ClassEditor
         roomId={roomId}
         classId={classRecord.id}

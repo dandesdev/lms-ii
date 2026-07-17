@@ -12,6 +12,7 @@ import {
   COMMAND_PRIORITY_CRITICAL,
   type TextFormatType,
 } from "lexical";
+import { $isTableSelection } from "@lexical/table";
 import {
   $createHeadingNode,
   $isHeadingNode,
@@ -250,7 +251,12 @@ function InlineFormatButtons() {
       editor.registerUpdateListener(({ editorState }) => {
         editorState.read(() => {
           const selection = $getSelection();
-          if (!$isRangeSelection(selection)) return;
+          if (
+            !$isRangeSelection(selection) &&
+            !$isTableSelection(selection)
+          ) {
+            return;
+          }
           setActive({
             bold: selection.hasFormat("bold"),
             italic: selection.hasFormat("italic"),

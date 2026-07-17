@@ -2,7 +2,6 @@
 
 import {
   useCallback,
-  useEffect,
   useRef,
   useState,
   type ReactNode,
@@ -80,12 +79,8 @@ export function ColorPalette({
   onClear: () => void;
   clearLabel?: string;
 }) {
-  const [recent, setRecent] = useState<string[]>([]);
+  const [recent, setRecent] = useState<string[]>(loadRecent);
   const [custom, setCustom] = useState("#1e4d3a");
-
-  useEffect(() => {
-    setRecent(loadRecent());
-  }, []);
 
   const pick = useCallback(
     (color: string, remember = false) => {
@@ -164,6 +159,154 @@ export function ColorPalette({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Compact split control with a corner dropdown affordance.
+ *
+ * Hover rules (least confusing):
+ * - Hovering the corner arrow highlights the whole control (main + arrow).
+ * - Hovering only the main toggle does not highlight the arrow.
+ */
+export function CornerSplitButton({
+  title,
+  dropdownTitle,
+  active,
+  dropdownOpen,
+  onMainClick,
+  onDropdownClick,
+  children,
+  footer,
+  className,
+}: {
+  title: string;
+  dropdownTitle?: string;
+  /** Persistent state of the tool itself (e.g. locked) — styles the main button. */
+  active?: boolean;
+  /** Whether the dropdown is open — styles the corner arrow only. */
+  dropdownOpen?: boolean;
+  onMainClick: () => void;
+  onDropdownClick: () => void;
+  children: ReactNode;
+  footer?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className="relative inline-flex">
+      {/* Arrow is the peer so main can react to arrow-hover; main cannot light the arrow. */}
+      <button
+        type="button"
+        title={dropdownTitle ?? `${title} options`}
+        aria-label={dropdownTitle ?? `${title} options`}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={onDropdownClick}
+        className={cn(
+          "peer/arrow absolute -bottom-0.5 -right-0.5 z-10 flex h-4 w-4 items-center justify-center rounded-full border border-editor-chrome bg-white text-editor-ink transition-colors hover:bg-accent",
+          dropdownOpen && "bg-accent"
+        )}
+      >
+        <ChevronDownIcon className="h-2.5 w-2.5" />
+      </button>
+      <button
+        type="button"
+        title={title}
+        aria-label={title}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={onMainClick}
+        className={cn(
+          "editor-toolbar-btn relative overflow-visible hover:bg-accent peer-hover/arrow:bg-accent",
+          active && "editor-toolbar-btn-active",
+          className
+        )}
+      >
+        {children}
+        {footer}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Split control: click the main button to apply `defaultColor` immediately,
+ * or the small chevron to open the palette. Picking a palette color applies it
+ * and promotes it to the new default (mirrors the alignment tool's affordance).
+ */
+export function SplitColorButton({
+  name,
+  icon,
+  defaultColor,
+  onApply,
+  onClear,
+  onDefaultChange,
+  clearLabel = "None",
+}: {
+  name: string;
+  icon?: ReactNode;
+  defaultColor: string;
+  onApply: (color: string) => void;
+  onClear: () => void;
+  onDefaultChange: (color: string) => void;
+  clearLabel?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  return (
+    <div ref={rootRef} className="relative inline-flex">
+      <CornerSplitButton
+        title={name}
+        dropdownTitle={`${name} — choose color`}
+        dropdownOpen={open}
+        onMainClick={() => onApply(defaultColor)}
+        onDropdownClick={() => setOpen((o) => !o)}
+        className="flex-col gap-0.5"
+        footer={
+          <span
+            className="h-1 w-4 rounded-full border border-black/10"
+            style={{ backgroundColor: defaultColor || "transparent" }}
+          />
+        }
+      >
+        {icon}
+      </CornerSplitButton>
+
+      <ToolbarPopover
+        open={open}
+        onClose={() => setOpen(false)}
+        anchorRef={rootRef}
+        className="w-[228px] p-3"
+      >
+        <ColorPalette
+          onPick={(color) => {
+            onDefaultChange(color);
+            onApply(color);
+            setOpen(false);
+          }}
+          onClear={() => {
+            onClear();
+            setOpen(false);
+          }}
+          clearLabel={clearLabel}
+        />
+      </ToolbarPopover>
+    </div>
+  );
+}
+
+function ChevronDownIcon({ className = "h-2.5 w-2.5" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={3}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
   );
 }
 

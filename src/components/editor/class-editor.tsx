@@ -42,7 +42,7 @@ import { SectionAwareMarkdownShortcutPlugin } from "./section-aware-markdown-plu
 import { ImageNode } from "./image-node";
 import { EditorSectionNode } from "./editor-section-node";
 import { SectionSeparatorNode } from "./section-separator-node";
-import { SectionStylePlugin } from "./format-plugins";
+import { SectionStylePlugin, DefaultTextColorPlugin } from "./format-plugins";
 import { ListExitPlugin } from "./list-exit-plugin";
 import { SectionMergePlugin } from "./section-merge-plugin";
 import {
@@ -50,6 +50,14 @@ import {
   useToolbarDock,
 } from "./editor-toolbar";
 import { usePresentMode } from "./present-mode";
+import { MarkUpModeProvider } from "./mark-up-mode-context";
+import { EditorColorsProvider } from "./editor-colors-context";
+import {
+  MarkUpModeChrome,
+  MarkUpModeToggle,
+  MarkUpToolsFloat,
+  MarkUpWordPlugin,
+} from "./mark-up-mode";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -85,18 +93,30 @@ function EditorInner({
   readOnly,
   backHref,
   toolbarRight,
+  enableMarkUpMode,
 }: {
   classId: string;
   markdownSource: string | null;
   readOnly?: boolean;
   backHref?: string;
   toolbarRight?: ReactNode;
+  enableMarkUpMode?: boolean;
 }) {
   const { zoom, setZoom, isFullscreen, toggleFullscreen } = usePresentMode();
   const isReady = useIsEditorReady();
   const [dock, setDock] = useToolbarDock();
   const vertical = dock === "left" || dock === "right";
 
+  const publishBar =
+    enableMarkUpMode || toolbarRight ? (
+      <div className="flex flex-wrap items-center gap-2">
+        {enableMarkUpMode && <MarkUpModeToggle />}
+        {enableMarkUpMode && toolbarRight && (
+          <span className="h-6 w-px bg-border" aria-hidden="true" />
+        )}
+        {toolbarRight}
+      </div>
+    ) : null;
   const initialConfig = useMemo(
     () =>
       liveblocksConfig({
@@ -125,8 +145,8 @@ function EditorInner({
             h4: "text-lg font-semibold mb-2 mt-3",
           },
           list: {
-            ul: "list-disc ml-6 mb-2",
-            ol: "list-decimal ml-6 mb-2",
+            ul: "list-disc mb-2",
+            ol: "list-decimal mb-2",
             listitem: "mb-1",
           },
           text: {
@@ -140,6 +160,9 @@ function EditorInner({
           tableCell: "editor-table-cell",
           tableCellHeader: "editor-table-header",
           tableRow: "",
+          // Cell-range selection (drag across cells) paints via these classes.
+          tableSelection: "editor-table-selection",
+          tableCellSelected: "editor-table-cell-selected",
           sectionSeparator: "editor-section-separator",
           editorSection: "editor-section",
         },
@@ -164,7 +187,7 @@ function EditorInner({
     <EditorToolbar
       classId={classId}
       backLink={backLink}
-      toolbarRight={vertical ? undefined : toolbarRight}
+      toolbarRight={vertical ? undefined : publishBar}
       dock={dock}
       onDockChange={setDock}
       zoom={zoom}
@@ -181,78 +204,87 @@ function EditorInner({
       )}
     >
       {backLink}
-      {!vertical && toolbarRight && (
-        <div className="ml-auto">{toolbarRight}</div>
+      {!vertical && publishBar && (
+        <div className="ml-auto">{publishBar}</div>
       )}
     </div>
   );
 
   const floatingControls =
-    vertical && toolbarRight ? (
+    vertical && publishBar ? (
         <div
           className={cn(
             "pointer-events-none fixed inset-x-0 top-3 z-30 flex justify-center",
-            dock === "left" ? "pl-[var(--editor-toolbar-rail)]" : "pr-[var(--editor-toolbar-rail)]"
+            dock === "left" ? "pl-(--editor-toolbar-rail)" : "pr-(--editor-toolbar-rail)"
           )}
         >
-        <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-editor-chrome bg-editor-canvas/95 px-3 py-1.5 shadow-md backdrop-blur">
-          {toolbarRight}
+        <div className="pointer-events-auto editor-float-palette">
+          {publishBar}
         </div>
       </div>
     ) : null;
 
   const editorPane = (
-    <div
-      className="editor-surface transition-transform origin-top"
-      style={{ transform: `scale(${zoom / 100})` }}
-    >
-      {!isReady && <EditorSkeleton />}
-      <RichTextPlugin
-        contentEditable={
-          <ContentEditable
-            className={cn("editor-content", !isReady && "opacity-0")}
-          />
-        }
-        placeholder={
-          <div className="pointer-events-none absolute top-8 left-[var(--content-pad)] text-muted-foreground">
-            Start writing your class…
-          </div>
-        }
-        ErrorBoundary={LexicalErrorBoundary}
-      />
-      <HistoryPlugin />
-      <ListPlugin />
-      {!readOnly && <ListExitPlugin />}
-      <TablePlugin />
-      <SectionStylePlugin />
-      <SectionMergePlugin />
-      {!readOnly && (
-        <>
-          <SectionAwareMarkdownShortcutPlugin
-            transformers={ELEMENT_TRANSFORMERS}
-          />
-          <MarkdownShortcutPlugin transformers={TEXT_TRANSFORMERS} />
-        </>
-      )}
-      <SeedMarkdownPlugin markdown={markdownSource} />
-    </div>
+    <MarkUpModeChrome>
+      <div
+        className="editor-surface min-h-0 flex-1 overflow-y-auto transition-transform origin-top"
+        style={{ transform: `scale(${zoom / 100})` }}
+      >
+        {!isReady && <EditorSkeleton />}
+        <RichTextPlugin
+          contentEditable={
+            <ContentEditable
+              className={cn("editor-content", !isReady && "opacity-0")}
+            />
+          }
+          placeholder={
+            <div className="pointer-events-none absolute top-8 left-(--content-pad) text-muted-foreground">
+              Start writing your class…
+            </div>
+          }
+          ErrorBoundary={LexicalErrorBoundary}
+        />
+        <HistoryPlugin />
+        <ListPlugin />
+        {!readOnly && <ListExitPlugin />}
+        <TablePlugin />
+        <SectionStylePlugin />
+        <DefaultTextColorPlugin />
+        <SectionMergePlugin />
+        {enableMarkUpMode && <MarkUpWordPlugin />}
+        {!readOnly && (
+          <>
+            <SectionAwareMarkdownShortcutPlugin
+              transformers={ELEMENT_TRANSFORMERS}
+            />
+            <MarkdownShortcutPlugin transformers={TEXT_TRANSFORMERS} />
+          </>
+        )}
+        <SeedMarkdownPlugin markdown={markdownSource} />
+      </div>
+      {enableMarkUpMode && <MarkUpToolsFloat />}
+    </MarkUpModeChrome>
   );
 
   return (
     <LexicalComposer initialConfig={initialConfig}>
-      <ClassLiveblocksPlugin>
-        <div
-          className={cn(
-            "flex min-h-[calc(100vh-0px)]",
-            vertical ? "flex-row" : "flex-col"
-          )}
-        >
-          {(dock === "top" || dock === "left") && toolbar}
-          {editorPane}
-          {(dock === "bottom" || dock === "right") && toolbar}
-        </div>
-        {floatingControls}
-      </ClassLiveblocksPlugin>
+      <EditorColorsProvider>
+        <MarkUpModeProvider>
+          <ClassLiveblocksPlugin>
+            <div
+              className={cn(
+                "flex h-screen min-h-0",
+                vertical ? "flex-row" : "flex-col"
+              )}
+            >
+              {(dock === "top" || dock === "left") && toolbar}
+              {editorPane}
+              {(dock === "bottom" || dock === "right") && toolbar}
+            </div>
+            {floatingControls}
+          </ClassLiveblocksPlugin>
+        </MarkUpModeProvider>
+      </EditorColorsProvider>
     </LexicalComposer>
   );
 }
@@ -265,6 +297,7 @@ export function ClassEditor({
   readOnly,
   backHref,
   toolbarRight,
+  enableMarkUpMode,
 }: {
   roomId: string;
   classId: string;
@@ -273,6 +306,7 @@ export function ClassEditor({
   readOnly?: boolean;
   backHref?: string;
   toolbarRight?: ReactNode;
+  enableMarkUpMode?: boolean;
 }) {
   return (
     <LiveblocksProvider
@@ -295,6 +329,7 @@ export function ClassEditor({
             readOnly={readOnly}
             backHref={backHref}
             toolbarRight={toolbarRight}
+            enableMarkUpMode={enableMarkUpMode}
           />
         </ClientSideSuspense>
       </RoomProvider>
