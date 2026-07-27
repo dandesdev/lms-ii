@@ -1,9 +1,15 @@
+import { Suspense } from "react";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getProfile } from "@/lib/auth";
 import { ensureCanonicalCollabRoomId } from "@/lib/collab-room";
-import { ClassEditor } from "@/components/editor/class-editor";
+import { getClassPageRecord } from "@/lib/data/classes";
+import { ClassEditorLazy } from "@/components/editor/class-editor-lazy";
+import { ClassOpenBootBridge } from "@/components/editor/class-open-boot-bridge";
+import { LinkNotRecognized } from "@/components/link-not-recognized";
 import { PublishControls } from "@/components/publish-controls";
+import { ClassOpeningLoading } from "@/components/class-opening-loading";
+import type { Profile } from "@/types/database";
 
 export default async function ClassPage({
   params,
@@ -11,36 +17,46 @@ export default async function ClassPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const supabase = await createClient();
-
-  const [profile, { data: classRecord }] = await Promise.all([
-    getProfile(),
-    supabase
-      .from("classes")
-      .select("id, student_id, title, status, share_token, markdown_source, liveblocks_room_id")
-      .eq("id", id)
-      .maybeSingle(),
-  ]);
+  const profile = await getProfile();
 
   if (!profile) {
     redirect(`/login?next=/class/${id}`);
   }
 
-  if (!classRecord) notFound();
+  return (
+    <Suspense fallback={<ClassOpeningLoading />}>
+      <ClassPageBody classId={id} profile={profile} />
+    </Suspense>
+  );
+}
 
+async function ClassPageBody({
+  classId,
+  profile,
+}: {
+  classId: string;
+  profile: Profile;
+}) {
   const isTeacher = profile.role === "teacher";
+  const classRecord = await getClassPageRecord(classId);
+
+  if (!classRecord) {
+    if (isTeacher) notFound();
+    return <LinkNotRecognized />;
+  }
 
   if (!isTeacher) {
     if (classRecord.status !== "published") {
       redirect("/student");
     }
+    const supabase = await createClient();
     const { data: student } = await supabase
       .from("students")
       .select("id")
       .eq("user_id", profile.id)
       .maybeSingle();
     if (!student || student.id !== classRecord.student_id) {
-      redirect("/student");
+      return <LinkNotRecognized />;
     }
   }
 
@@ -52,11 +68,16 @@ export default async function ClassPage({
 
   return (
     <main className="min-h-screen bg-editor-canvas">
-      <ClassEditor
+      <ClassOpenBootBridge />
+      <ClassEditorLazy
         roomId={roomId}
         classId={classRecord.id}
         markdownSource={classRecord.markdown_source}
-        backHref={isTeacher ? `/dashboard/students/${classRecord.student_id}` : "/student"}
+        backHref={
+          isTeacher
+            ? `/dashboard/students/${classRecord.student_id}`
+            : "/student"
+        }
         enableMarkUpMode={isTeacher}
         toolbarRight={
           isTeacher ? (
@@ -64,6 +85,7 @@ export default async function ClassPage({
               classId={classRecord.id}
               status={classRecord.status}
               shareToken={classRecord.share_token}
+              startedAt={classRecord.started_at}
             />
           ) : undefined
         }

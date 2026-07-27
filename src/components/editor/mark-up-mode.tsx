@@ -792,27 +792,7 @@ export function MarkUpModeToggle() {
 
 // --- Editor frame while active ---------------------------------------------
 
-export function MarkUpModeChrome({ children }: { children: ReactNode }) {
-  const { active } = useMarkUpMode();
-  const { vignetteColor } = useEditorColors();
-  // Translucent variant of the (rgb) vignette color for the soft inner glow.
-  const softVignette = vignetteColor
-    .replace("rgb(", "rgba(")
-    .replace(")", ", 0.5)");
-  return (
-    <div className="relative flex min-h-0 flex-1 flex-col">
-      {active && (
-        <div
-          className="pointer-events-none absolute inset-0 z-10"
-          style={{
-            boxShadow: `inset 0 0 0 6px ${vignetteColor}, inset 0 0 90px 16px ${softVignette}`,
-          }}
-        />
-      )}
-      {children}
-    </div>
-  );
-}
+export { MarkUpModeChrome } from "./mark-up-mode-chrome";
 
 // --- Floating tool palette (buttons only, top-center) -----------------------
 

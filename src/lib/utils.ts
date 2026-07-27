@@ -18,3 +18,16 @@ export function filenameToTitle(filename: string): string {
   }
   return base.replace(/-/g, " ");
 }
+
+/** Concise date for class lists, e.g. "Jul 25" or "Jul 25, 2025". */
+export function formatShortDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+  const sameYear = date.getFullYear() === new Date().getFullYear();
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+  });
+}

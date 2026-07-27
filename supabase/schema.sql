@@ -32,7 +32,8 @@ create table if not exists public.classes (
   markdown_source text,
   liveblocks_room_id text not null unique,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  started_at timestamptz
 );
 
 create index if not exists classes_student_id_idx on public.classes (student_id);

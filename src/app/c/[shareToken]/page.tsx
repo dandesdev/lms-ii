@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { getClassByShareToken } from "@/lib/classes";
 import { ensureCanonicalCollabRoomId } from "@/lib/collab-room";
-import { ClassEditor } from "@/components/editor/class-editor";
+import { ClassEditorLazy } from "@/components/editor/class-editor-lazy";
+import { LinkNotRecognized } from "@/components/link-not-recognized";
 import { Button } from "@/components/ui/button";
 
 export default async function ShareClassPage({
@@ -14,7 +14,7 @@ export default async function ShareClassPage({
   const classRecord = await getClassByShareToken(shareToken);
 
   if (!classRecord || classRecord.status !== "published") {
-    notFound();
+    return <LinkNotRecognized />;
   }
 
   const roomId = await ensureCanonicalCollabRoomId(
@@ -25,7 +25,7 @@ export default async function ShareClassPage({
 
   return (
     <main className="min-h-screen bg-editor-canvas">
-      <ClassEditor
+      <ClassEditorLazy
         roomId={roomId}
         classId={classRecord.id}
         markdownSource={classRecord.markdown_source}

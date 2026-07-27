@@ -1,9 +1,14 @@
-import { Loader2 } from "lucide-react";
+import { RouteLoading } from "@/components/route-loading";
 
 export default function Loading() {
   return (
-    <main className="flex min-h-screen items-center justify-center gap-2 text-muted-foreground">
-      <Loader2 className="h-5 w-5 animate-spin" /> Loading dashboard…
-    </main>
+    <RouteLoading
+      title="Dashboard"
+      statuses={[
+        "Gathering your students",
+        "Checking class readiness",
+        "Laying out the board",
+      ]}
+    />
   );
 }

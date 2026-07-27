@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth";
 
@@ -40,6 +41,9 @@ export async function POST(request: Request) {
       .single();
 
     if (error) throw error;
+
+    revalidatePath("/dashboard");
+
     return NextResponse.json(data);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Error";

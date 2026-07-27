@@ -158,7 +158,8 @@ async function roomYjsIsEmpty(roomId: string): Promise<boolean> {
 
 /**
  * Ensure the Liveblocks room exists and, if its Lexical Yjs root is empty,
- * seed it from markdown_source. Safe to call on every class page load.
+ * seed it from markdown_source. Prefer calling from create (`after()`) or
+ * epoch migration — not on every class page load.
  */
 export async function ensureCollabRoomSeeded(
   roomId: string,

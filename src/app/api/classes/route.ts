@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth";
 import {
@@ -7,6 +7,7 @@ import {
 } from "@/lib/utils";
 import { canonicalCollabRoomId } from "@/lib/collab-room";
 import { ensureCollabRoomSeeded } from "@/lib/seed-collab-yjs";
+import { revalidateClassData } from "@/lib/data/revalidate-class-data";
 import { randomUUID } from "crypto";
 
 export async function GET(request: Request) {
@@ -56,19 +57,23 @@ export async function POST(request: Request) {
   try {
     await requireTeacher();
     const body = await request.json();
-    const { studentId, markdown, filename } = body;
+    const { studentId, markdown, filename, title: requestedTitle } = body;
 
-    if (!studentId || !markdown) {
+    if (!studentId) {
       return NextResponse.json(
-        { error: "studentId and markdown are required" },
+        { error: "studentId is required" },
         { status: 400 }
       );
     }
 
-    const fallbackTitle = filename
-      ? filenameToTitle(filename)
-      : "Untitled Class";
-    const title = extractTitleFromMarkdown(markdown, fallbackTitle);
+    const md = typeof markdown === "string" ? markdown : "";
+    const fallbackTitle =
+      (typeof requestedTitle === "string" && requestedTitle.trim()) ||
+      (filename ? filenameToTitle(filename) : "Untitled Class");
+    const title = md
+      ? extractTitleFromMarkdown(md, fallbackTitle)
+      : fallbackTitle;
+    const markdownSource = md || `# ${title}\n\n`;
     const classId = randomUUID();
     const roomId = canonicalCollabRoomId(classId);
 
@@ -80,7 +85,7 @@ export async function POST(request: Request) {
         student_id: studentId,
         title,
         source_filename: filename || null,
-        markdown_source: markdown,
+        markdown_source: markdownSource,
         liveblocks_room_id: roomId,
         status: "draft",
       })
@@ -89,11 +94,19 @@ export async function POST(request: Request) {
 
     if (error) throw error;
 
-    try {
-      await ensureCollabRoomSeeded(roomId, markdown);
-    } catch (err) {
-      console.warn("[classes] seed on create ignored", err);
-    }
+    revalidateClassData({ studentId, classId });
+
+    // Do not block the create response on Liveblocks. Seed after the response
+    // so the client can navigate immediately. Class pages no longer re-probe
+    // Yjs when the room id is already canonical; SeedMarkdownPlugin covers
+    // the rare race where the editor connects before this finishes.
+    after(async () => {
+      try {
+        await ensureCollabRoomSeeded(roomId, markdownSource);
+      } catch (err) {
+        console.warn("[classes] seed on create ignored", err);
+      }
+    });
 
     return NextResponse.json(data);
   } catch (err) {

@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { Liveblocks } from "@liveblocks/node";
-import { createClient } from "@/lib/supabase/server";
 import {
   getClassByShareToken,
   canAccessClass,
   getLinkedStudentId,
 } from "@/lib/classes";
 import { getProfile } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
 import type { ClassRecord } from "@/types/database";
 
 function getLiveblocks() {
@@ -45,12 +45,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing room" }, { status: 400 });
   }
 
-  const profile = await getProfile();
+  // Profile + room lookup are independent — run in parallel.
+  const [profile, classByRoom] = await Promise.all([
+    getProfile(),
+    getClassByRoomId(room),
+  ]);
   const isTeacher = profile?.role === "teacher";
 
   // Resolve by liveblocks_room_id (supports class-{uuid}-flat1 epochs).
   // Do NOT parse the class id from the room string — suffixes break that.
-  let classRecord = await getClassByRoomId(room);
+  let classRecord = classByRoom;
   if (!classRecord && shareToken) {
     classRecord = await getClassByShareToken(shareToken);
   }
@@ -59,8 +63,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Class not found" }, { status: 404 });
   }
 
+  // Teachers never need a linked student row for access checks.
   let studentId: string | null = null;
-  if (profile) {
+  if (profile && !isTeacher) {
     studentId = await getLinkedStudentId(profile.id);
   }
 

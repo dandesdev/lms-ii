@@ -7,6 +7,7 @@
  */
 
 export {
+  $collapseAdjacentSectionSeparators,
   $ensureSectionStructure,
   $getSectionAtCursor,
   $getSectionBlocksAtCursor,

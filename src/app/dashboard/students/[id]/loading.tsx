@@ -1,9 +1,15 @@
-import { Loader2 } from "lucide-react";
+import { RouteLoading } from "@/components/route-loading";
 
 export default function Loading() {
   return (
-    <main className="flex min-h-screen items-center justify-center gap-2 text-muted-foreground">
-      <Loader2 className="h-5 w-5 animate-spin" /> Loading classes…
-    </main>
+    <RouteLoading
+      title="Your classes"
+      statuses={[
+        "Opening the folder",
+        "Gathering classes",
+        "Sorting the list",
+        "Laying out the page",
+      ]}
+    />
   );
 }

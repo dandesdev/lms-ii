@@ -4,14 +4,21 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { FileUp, Loader2 } from "lucide-react";
+import { prefetchClassEditorChunk } from "@/lib/prefetch-class-editor";
+import { useClassBoot } from "@/components/class-boot/class-boot-provider";
+import { filenameToTitle } from "@/lib/utils";
 
 export function ImportMarkdownButton({ studentId }: { studentId: string }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const boot = useClassBoot();
 
   async function handleFile(file: File) {
+    const title = filenameToTitle(file.name) || file.name;
     setLoading(true);
+    boot.start({ title, mode: "import" });
+    prefetchClassEditorChunk();
     try {
       const markdown = await file.text();
       const res = await fetch("/api/classes", {
@@ -25,9 +32,11 @@ export function ImportMarkdownButton({ studentId }: { studentId: string }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Import failed");
-      router.push(`/class/${data.id}`);
+      boot.advance("open");
       router.refresh();
+      router.push(`/class/${data.id}`);
     } catch (err) {
+      boot.cancel();
       alert(err instanceof Error ? err.message : "Import failed");
     } finally {
       setLoading(false);
@@ -43,7 +52,7 @@ export function ImportMarkdownButton({ studentId }: { studentId: string }) {
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];
-          if (file) handleFile(file);
+          if (file) void handleFile(file);
           e.target.value = "";
         }}
       />
@@ -51,7 +60,11 @@ export function ImportMarkdownButton({ studentId }: { studentId: string }) {
         variant="secondary"
         size="sm"
         disabled={loading}
-        onClick={() => inputRef.current?.click()}
+        onMouseEnter={() => prefetchClassEditorChunk()}
+        onClick={() => {
+          prefetchClassEditorChunk();
+          inputRef.current?.click();
+        }}
       >
         {loading ? (
           <Loader2 className="h-4 w-4 animate-spin" />

@@ -1,9 +1,10 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { getProfile } from "@/lib/auth";
 import { loadDashboardSnapshot } from "@/lib/dashboard-snapshot";
+import { getClassCountsByStudent } from "@/lib/data/classes";
 import { DashboardClient } from "@/components/dashboard/dashboard-client";
-import type { LmsClassCounts } from "@/types/dashboard";
+import { RouteLoading } from "@/components/route-loading";
 
 export default async function DashboardPage() {
   const profile = await getProfile();
@@ -11,25 +12,30 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  const supabase = await createClient();
-  const [snapshot, { data: classes }] = await Promise.all([
-    loadDashboardSnapshot(),
-    supabase.from("classes").select("student_id, status"),
-  ]);
+  return (
+    <Suspense
+      fallback={
+        <RouteLoading
+          title="Dashboard"
+          statuses={[
+            "Opening the board",
+            "Loading students",
+            "Counting classes",
+            "Laying out the page",
+          ]}
+        />
+      }
+    >
+      <DashboardBody />
+    </Suspense>
+  );
+}
 
-  const classCounts: Record<string, LmsClassCounts> = {};
-  for (const cls of classes ?? []) {
-    const entry = (classCounts[cls.student_id] ??= {
-      total: 0,
-      draft: 0,
-      published: 0,
-      archived: 0,
-    });
-    entry.total++;
-    if (cls.status === "draft") entry.draft++;
-    else if (cls.status === "published") entry.published++;
-    else if (cls.status === "archived") entry.archived++;
-  }
+async function DashboardBody() {
+  const [snapshot, classCounts] = await Promise.all([
+    loadDashboardSnapshot(),
+    getClassCountsByStudent(),
+  ]);
 
   return <DashboardClient snapshot={snapshot} classCounts={classCounts} />;
 }

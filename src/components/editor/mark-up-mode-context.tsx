@@ -5,6 +5,7 @@ import {
   type Dispatch,
   useCallback,
   useContext,
+  useLayoutEffect,
   useMemo,
   useState,
   type SetStateAction,
@@ -73,6 +74,16 @@ export function MarkUpModeProvider({ children }: { children: ReactNode }) {
   const [activeTools, setActiveTools] = useState<LockedMarkUpTool[]>([]);
   const [pending, setPending] = useState<PendingMarkUpMark[]>([]);
   const [revealed, setRevealed] = useState(false);
+
+  // Activity preserves mark-up UI across navigations — exit mode while hidden.
+  useLayoutEffect(() => {
+    return () => {
+      setActiveState(false);
+      setActiveTools([]);
+      setRevealed(false);
+      setPending([]);
+    };
+  }, []);
 
   const setActive = useCallback((next: boolean) => {
     setActiveState(next);

@@ -167,6 +167,9 @@ export function $normalizeRootIntoSections(force = false): void {
 
   // Already wrapped.
   if ($usesSectionWrappers()) {
+    while ($collapseAdjacentSectionSeparators()) {
+      /* keep one HR when several sit together */
+    }
     $padEmptySections();
     return;
   }
@@ -221,15 +224,9 @@ export function $normalizeRootIntoSections(force = false): void {
     last.insertAfter(section);
   }
 
-  // Adjacent separators → empty section between.
-  for (const child of [...root.getChildren()]) {
-    if (!$isSectionSeparatorNode(child)) continue;
-    const next = child.getNextSibling();
-    if ($isSectionSeparatorNode(next)) {
-      const section = $createEditorSectionNode();
-      section.append($createParagraphNode());
-      child.insertAfter(section);
-    }
+  // Adjacent separators → keep one (empty sections between HRs are unreachable).
+  while ($collapseAdjacentSectionSeparators()) {
+    /* remove until no Sep|Sep remains */
   }
 
   $padEmptySections();
@@ -264,6 +261,16 @@ export function $ensureSectionStructure(): void {
 export function $splitSectionAtBlock(block: ElementNode): void {
   const section = block.getParent();
   if (!$isEditorSectionNode(section)) {
+    // `---` next to an existing HR would yield Sep|Sep — drop the duplicate.
+    if (
+      $isSectionSeparatorNode(block.getPreviousSibling()) ||
+      $isSectionSeparatorNode(block.getNextSibling())
+    ) {
+      const p = $createParagraphNode();
+      block.replace(p);
+      p.selectStart();
+      return;
+    }
     const sep = $createSectionSeparatorNode();
     const next = $createEditorSectionNode();
     next.append($createParagraphNode());
@@ -297,6 +304,26 @@ export function $splitSectionAtBlock(block: ElementNode): void {
   section.insertAfter(sep);
   sep.insertAfter(nextSection);
   nextSection.selectStart();
+}
+
+/**
+ * When two SectionSeparatorNodes sit adjacent (import, paste, or sync), keep
+ * the first and remove the rest so we never create empty unreachable sections.
+ * Returns true if a separator was removed (transforms re-run until stable).
+ */
+export function $collapseAdjacentSectionSeparators(): boolean {
+  const root = $getRoot();
+  const children = root.getChildren();
+  for (let i = 0; i < children.length - 1; i++) {
+    const cur = children[i];
+    const next = children[i + 1];
+    if (!$isSectionSeparatorNode(cur) || !$isSectionSeparatorNode(next)) {
+      continue;
+    }
+    next.remove();
+    return true;
+  }
+  return false;
 }
 
 /**

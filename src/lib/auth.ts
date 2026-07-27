@@ -1,21 +1,26 @@
+import { cache } from "react";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import type { Profile, UserRole } from "@/types/database";
 
-export async function getSessionUser() {
+/**
+ * Per-request memoization via React `cache()`. Dedupes auth.getUser + profile
+ * lookups when middleware-adjacent RSC and nested helpers call these in the
+ * same render/request (e.g. requireTeacher → getProfile, or parallel awaits).
+ * Does not share across distinct HTTP requests — safe for multi-user.
+ */
+export const getSessionUser = cache(async () => {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   return user;
-}
+});
 
-export async function getProfile(): Promise<Profile | null> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+export const getProfile = cache(async (): Promise<Profile | null> => {
+  const user = await getSessionUser();
   if (!user) return null;
 
+  const supabase = await createClient();
   const { data } = await supabase
     .from("profiles")
     .select("*")
@@ -23,7 +28,7 @@ export async function getProfile(): Promise<Profile | null> {
     .single();
 
   return data as Profile | null;
-}
+});
 
 export async function ensureProfile(
   userId: string,

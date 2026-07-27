@@ -29,6 +29,7 @@ export interface ClassRecord {
   liveblocks_room_id: string;
   created_at: string;
   updated_at: string;
+  started_at: string | null;
   students?: Pick<Student, "id" | "name">;
 }
 

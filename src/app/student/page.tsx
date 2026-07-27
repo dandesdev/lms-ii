@@ -1,10 +1,12 @@
-import Link from "next/link";
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getProfile } from "@/lib/auth";
-import { Badge } from "@/components/ui/badge";
+import { getPublishedStudentClasses } from "@/lib/data/classes";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StudentPortalClassLink } from "@/components/student-portal-class-link";
+import { StudentPortalListRefresh } from "@/components/student-portal-list-refresh";
 import { BookOpen, GraduationCap, LogOut } from "lucide-react";
 
 export default async function StudentPortalPage() {
@@ -23,23 +25,6 @@ export default async function StudentPortalPage() {
     .select("id, name")
     .eq("user_id", profile.id)
     .maybeSingle();
-
-  let classes: Array<{
-    id: string;
-    title: string;
-    status: string;
-    updated_at: string;
-  }> = [];
-
-  if (student) {
-    const { data } = await supabase
-      .from("classes")
-      .select("id, title, status, updated_at")
-      .eq("student_id", student.id)
-      .eq("status", "published")
-      .order("updated_at", { ascending: false });
-    classes = data ?? [];
-  }
 
   return (
     <main className="min-h-screen bg-[#f5f0e6]">
@@ -78,26 +63,44 @@ export default async function StudentPortalPage() {
                 teacher to add your email when creating your profile.
               </p>
             )}
-            {student && classes.length === 0 && (
-              <p className="py-6 text-center text-[#6b6558]">
-                No published classes yet. Your teacher will publish them when ready.
-              </p>
+            {student && (
+              <Suspense
+                fallback={
+                  <p className="py-6 text-center text-[#6b6558]">
+                    Loading classes…
+                  </p>
+                }
+              >
+                <StudentPortalClasses studentId={student.id} />
+              </Suspense>
             )}
-            <div className="divide-y divide-[#e8e0d0]">
-              {classes.map((cls) => (
-                <Link
-                  key={cls.id}
-                  href={`/class/${cls.id}`}
-                  className="flex items-center justify-between py-3 transition-colors hover:bg-[#faf7f0] -mx-2 px-2 rounded-md"
-                >
-                  <p className="font-medium">{cls.title}</p>
-                  <Badge variant="success">published</Badge>
-                </Link>
-              ))}
-            </div>
           </CardContent>
         </Card>
       </div>
     </main>
+  );
+}
+
+async function StudentPortalClasses({ studentId }: { studentId: string }) {
+  const classes = await getPublishedStudentClasses(studentId);
+
+  return (
+    <>
+      <StudentPortalListRefresh />
+      {classes.length === 0 && (
+        <p className="py-6 text-center text-[#6b6558]">
+          No published classes yet. Your teacher will publish them when ready.
+        </p>
+      )}
+      <div className="divide-y divide-[#e8e0d0]">
+        {classes.map((cls) => (
+          <StudentPortalClassLink
+            key={cls.id}
+            id={cls.id}
+            title={cls.title}
+          />
+        ))}
+      </div>
+    </>
   );
 }

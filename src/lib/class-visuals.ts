@@ -30,7 +30,9 @@ export function readyCountTone(
 ): ClassTone {
   if (upcomingNoFile) return "danger";
   if (readyCount === 0) return "danger";
-  if (partialCount > 0) return "partial";
+  // Yellow only when the sole ready class is partial; multiple ready → green
+  // (partial icon still shown by ReadyCountBadge).
+  if (partialCount > 0 && readyCount === 1) return "partial";
   return "ready";
 }
 

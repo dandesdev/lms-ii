@@ -27,8 +27,10 @@ export function isCanonicalCollabRoomId(
 
 /**
  * If the class still points at a pre-epoch Liveblocks room, rewrite the room id
- * (service role) and best-effort delete the old room. Optionally seed the new
- * empty room from markdown.
+ * (service role) and best-effort delete the old room. Seeds only when migrating
+ * to a new empty epoch room — not on every page load of an already-canonical
+ * room (that Yjs empty-check was a multi-RTT tax). Fresh creates seed via
+ * `after()` on POST; `SeedMarkdownPlugin` covers rare misses.
  */
 export async function ensureCanonicalCollabRoomId(
   classId: string,
@@ -37,13 +39,6 @@ export async function ensureCanonicalCollabRoomId(
 ): Promise<string> {
   const canonical = canonicalCollabRoomId(classId);
   if (currentRoomId === canonical) {
-    if (markdownSource !== undefined) {
-      try {
-        await ensureCollabRoomSeeded(canonical, markdownSource);
-      } catch (err) {
-        console.warn("[collab-room] seed ignored", err);
-      }
-    }
     return currentRoomId;
   }
 

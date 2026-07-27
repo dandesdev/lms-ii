@@ -129,7 +129,7 @@ async function syncStudent(
   const folder = summary.id;
   const lower = (s: string) => s.toLowerCase();
 
-  let student =
+  const student =
     existing.find((s) => lower(s.name) === lower(summary.name)) ??
     existing.find(
       (s) =>

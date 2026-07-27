@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { ROW_UPCOMING_DANGER } from "@/lib/class-visuals";
+import { useRefreshOnReshow } from "@/hooks/use-refresh-on-reshow";
 import type {
   DashboardSnapshot,
   LmsClassCounts,
@@ -124,6 +125,7 @@ function LmsClassesCell({
   return (
     <Link
       href={`/dashboard/students/${lmsStudentId}`}
+      prefetch
       onClick={(e) => e.stopPropagation()}
       title={`Open the ${total} LMS classes to edit/publish (${published} published)`}
       className="inline-flex items-center gap-1.5 rounded-md border border-[#1e4d3a]/25 bg-[#e6f0e8] px-2 py-1 font-mono text-[11px] leading-tight text-[#1e4d3a] transition-colors hover:bg-[#d5e6d9]"
@@ -143,6 +145,7 @@ export function DashboardClient({
   classCounts: Record<string, LmsClassCounts>;
 }) {
   const router = useRouter();
+  useRefreshOnReshow();
   const [refreshing, startRefresh] = useTransition();
   const [query, setQuery] = useState("");
   const [selectedClass, setSelectedClass] = useState<SelectedClass | null>(null);

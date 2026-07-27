@@ -53,6 +53,13 @@ import { $isEditorSectionNode } from "./editor-section-node";
 import { $applySectionBackgroundAtCursor } from "./section-utils";
 import { ToolbarPopover } from "./toolbar-ui";
 import { cn } from "@/lib/utils";
+import {
+  EDITOR_FONTS,
+  matchEditorFont,
+  type EditorFont,
+} from "@/lib/fonts/registry";
+import { ensureFontLoaded, ensureFontsLoaded } from "@/lib/fonts/ensure-font";
+import { Waiting } from "@/components/waiting";
 
 /** Default ink written onto TextNode styles (and shown by the color tool). */
 export const DEFAULT_TEXT_COLOR = "#000000";
@@ -589,26 +596,58 @@ export function AlignmentPicker() {
 /* Font family                                                         */
 /* ------------------------------------------------------------------ */
 
-const FONTS: Array<{ label: string; value: string | null }> = [
-  { label: "Inter", value: null },
-  { label: "Roboto", value: "Roboto, sans-serif" },
-  { label: "Lobster", value: "Lobster, cursive" },
-];
-
 function currentFontLabel(font: string): string {
-  if (!font) return "Inter";
-  const match = FONTS.find((f) => f.value && font.includes(f.label));
-  return match?.label ?? "Font";
+  return matchEditorFont(font)?.label ?? (font ? "Font" : "Inter");
 }
 
 export function FontFamilyPicker({ compact = false }: { compact?: boolean }) {
   const { withSelection, styles } = useStyledSelection();
   const [open, setOpen] = useState(false);
+  const [loadingFonts, setLoadingFonts] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const loadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const apply = (value: string | null) => {
-    withSelection((sel) => $patchStyleText(sel, { "font-family": value }));
-    setOpen(false);
+  useEffect(() => {
+    return () => {
+      if (loadTimer.current) clearTimeout(loadTimer.current);
+    };
+  }, []);
+
+  const showSlowLoad = () => {
+    if (loadTimer.current) clearTimeout(loadTimer.current);
+    loadTimer.current = setTimeout(() => setLoadingFonts(true), 150);
+  };
+
+  const hideSlowLoad = () => {
+    if (loadTimer.current) clearTimeout(loadTimer.current);
+    loadTimer.current = null;
+    setLoadingFonts(false);
+  };
+
+  const openPicker = async () => {
+    const next = !open;
+    setOpen(next);
+    if (next) {
+      showSlowLoad();
+      try {
+        await ensureFontsLoaded(EDITOR_FONTS);
+      } finally {
+        hideSlowLoad();
+      }
+    }
+  };
+
+  const apply = async (font: EditorFont) => {
+    showSlowLoad();
+    try {
+      await ensureFontLoaded(font);
+      withSelection((sel) =>
+        $patchStyleText(sel, { "font-family": font.cssFamily })
+      );
+      setOpen(false);
+    } finally {
+      hideSlowLoad();
+    }
   };
 
   const label = currentFontLabel(styles.font ?? "");
@@ -619,7 +658,7 @@ export function FontFamilyPicker({ compact = false }: { compact?: boolean }) {
         type="button"
         title="Font family"
         onMouseDown={(e) => e.preventDefault()}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => void openPicker()}
         className={cn(
           "editor-toolbar-btn",
           compact ? "w-8" : "h-8 min-w-[84px] justify-between gap-1 px-2 text-sm",
@@ -642,21 +681,26 @@ export function FontFamilyPicker({ compact = false }: { compact?: boolean }) {
         anchorRef={rootRef}
         className="w-44 p-1"
       >
-        {FONTS.map((font) => (
+        {loadingFonts && (
+          <div className="px-2.5 py-1.5">
+            <Waiting kind="fonts" variant="inline" className="text-xs" />
+          </div>
+        )}
+        {EDITOR_FONTS.map((font) => (
           <button
-            key={font.label}
+            key={font.id}
             type="button"
             onMouseDown={(e) => e.preventDefault()}
-            onClick={() => apply(font.value)}
+            onClick={() => void apply(font)}
             className={cn(
               "block w-full rounded-md px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-accent",
               label === font.label && "bg-accent"
             )}
-            style={
-              font.value
-                ? { fontFamily: font.value }
-                : { fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif" }
-            }
+            style={{
+              fontFamily:
+                font.cssFamily ??
+                "Inter, ui-sans-serif, system-ui, sans-serif",
+            }}
           >
             {font.label}
           </button>

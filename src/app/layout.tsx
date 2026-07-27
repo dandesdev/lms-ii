@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { SuppressYjsPrematureAccessLogs } from "@/components/suppress-yjs-premature-access-logs";
+import { ClassBootProvider } from "@/components/class-boot/class-boot-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -25,16 +26,16 @@ export default function RootLayout({
         />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        {/* UI fonts (same as the local dashboard) + editor fonts (Inter with all
-            variations, Roboto, Lobster) so inline font-family styles render. */}
+        {/* UI fonts + Architects Daughter for loading headlines. Editor faces
+            still load on /class and /c via the font registry. */}
         <link
-          href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Public+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Spline+Sans+Mono:wght@400;500;600&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,400;1,700&family=Lobster&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Architects+Daughter&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Public+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Spline+Sans+Mono:wght@400;500;600&display=swap"
           rel="stylesheet"
         />
       </head>
       <body className="min-h-full flex flex-col">
         <SuppressYjsPrematureAccessLogs />
-        {children}
+        <ClassBootProvider>{children}</ClassBootProvider>
       </body>
     </html>
   );

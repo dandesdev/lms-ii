@@ -5,6 +5,7 @@
 @theme {
   --font-sans: "Public Sans", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --font-playful: "Architects Daughter", "Fraunces", cursive;
   --font-mono: "Spline Sans Mono", ui-monospace, monospace;
 
   --color-background: #f4eee1;

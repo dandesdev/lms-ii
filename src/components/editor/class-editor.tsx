@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import Link from "next/link";
 import {
   LiveblocksProvider,
@@ -36,6 +36,8 @@ import {
   useIsEditorReady,
 } from "./class-liveblocks-plugin";
 import { SeedMarkdownPlugin } from "./seed-markdown-plugin";
+import { FontPreloadPlugin } from "./font-preload-plugin";
+import { ClassBootCompleter } from "./class-boot-completer";
 import { TABLE } from "./table-markdown";
 import { SECTION_SEPARATOR } from "./section-separator-markdown";
 import { SectionAwareMarkdownShortcutPlugin } from "./section-aware-markdown-plugin";
@@ -52,14 +54,31 @@ import {
 import { usePresentMode } from "./present-mode";
 import { MarkUpModeProvider } from "./mark-up-mode-context";
 import { EditorColorsProvider } from "./editor-colors-context";
-import {
-  MarkUpModeChrome,
-  MarkUpModeToggle,
-  MarkUpToolsFloat,
-  MarkUpWordPlugin,
-} from "./mark-up-mode";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { MarkUpModeChrome } from "./mark-up-mode-chrome";
+import { LiveblocksDisconnectOnHide } from "./liveblocks-disconnect-on-hide";
+import dynamic from "next/dynamic";
+import { ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Waiting } from "@/components/waiting";
+import { useClassBoot } from "@/components/class-boot/class-boot-provider";
+import { EditorFontsBootstrap } from "./editor-fonts-bootstrap";
+
+/** Teacher-only mark-up UI — loaded only when enableMarkUpMode is true. */
+const MarkUpModeToggle = dynamic(
+  () =>
+    import("./mark-up-mode").then((m) => ({ default: m.MarkUpModeToggle })),
+  { ssr: false }
+);
+const MarkUpToolsFloat = dynamic(
+  () =>
+    import("./mark-up-mode").then((m) => ({ default: m.MarkUpToolsFloat })),
+  { ssr: false }
+);
+const MarkUpWordPlugin = dynamic(
+  () =>
+    import("./mark-up-mode").then((m) => ({ default: m.MarkUpWordPlugin })),
+  { ssr: false }
+);
 
 const ELEMENT_TRANSFORMERS = [
   SECTION_SEPARATOR,
@@ -80,9 +99,8 @@ const TEXT_TRANSFORMERS = [
 
 function EditorSkeleton() {
   return (
-    <div className="flex h-64 items-center justify-center text-[#6b6558]">
-      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-      Loading editor…
+    <div className="flex h-64 items-center justify-center">
+      <Waiting kind="editor" variant="inline" />
     </div>
   );
 }
@@ -176,6 +194,7 @@ function EditorInner({
   const backLink = backHref ? (
     <Link
       href={backHref}
+      prefetch
       title="Back"
       className="editor-toolbar-btn"
     >
@@ -224,8 +243,7 @@ function EditorInner({
       </div>
     ) : null;
 
-  const editorPane = (
-    <MarkUpModeChrome>
+  const editorSurface = (
       <div
         className="editor-surface min-h-0 flex-1 overflow-y-auto transition-transform origin-top"
         style={{ transform: `scale(${zoom / 100})` }}
@@ -261,9 +279,18 @@ function EditorInner({
           </>
         )}
         <SeedMarkdownPlugin markdown={markdownSource} />
+        <FontPreloadPlugin />
+        <ClassBootCompleter />
       </div>
-      {enableMarkUpMode && <MarkUpToolsFloat />}
+  );
+
+  const editorPane = enableMarkUpMode ? (
+    <MarkUpModeChrome>
+      {editorSurface}
+      <MarkUpToolsFloat />
     </MarkUpModeChrome>
+  ) : (
+    <div className="relative flex min-h-0 flex-1 flex-col">{editorSurface}</div>
   );
 
   return (
@@ -308,6 +335,12 @@ export function ClassEditor({
   toolbarRight?: ReactNode;
   enableMarkUpMode?: boolean;
 }) {
+  const boot = useClassBoot();
+
+  useEffect(() => {
+    boot.advance("editor");
+  }, [boot]);
+
   return (
     <LiveblocksProvider
       badgeLocation="bottom-left"
@@ -321,7 +354,9 @@ export function ClassEditor({
         return res.json();
       }}
     >
+      <EditorFontsBootstrap />
       <RoomProvider id={roomId}>
+        <LiveblocksDisconnectOnHide />
         <ClientSideSuspense fallback={<EditorSkeleton />}>
           <EditorInner
             classId={classId}
