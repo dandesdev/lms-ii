@@ -1,24 +1,30 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   BookOpen,
   BookOpenCheck,
+  FolderOpen,
   GraduationCap,
+  HelpCircle,
   LogOut,
   RefreshCw,
   Search,
+  Settings,
   Users,
 } from "lucide-react";
 import { AgendaPanel } from "@/components/dashboard/agenda-panel";
-import { UsageCard } from "@/components/dashboard/usage-card";
-import { WorkspaceConnect } from "@/components/workspace/workspace-connect";
+import { DashboardSettingsDialog } from "@/components/dashboard/dashboard-settings-dialog";
 import { ClassSummaryDialog } from "@/components/dashboard/class-summary-dialog";
 import { HistoryClassBadge, ReadyCountBadge } from "@/components/dashboard/class-badge";
 import { ClassDetailDialog, type SelectedClass } from "@/components/dashboard/class-detail-dialog";
 import { StudentDialog } from "@/components/dashboard/student-dialog";
+import {
+  WorkspaceController,
+  type WorkspaceConnectHandle,
+} from "@/components/workspace/workspace-connect";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
@@ -32,6 +38,7 @@ import { cn } from "@/lib/utils";
 import { ROW_UPCOMING_DANGER } from "@/lib/class-visuals";
 import { useRefreshOnReshow } from "@/hooks/use-refresh-on-reshow";
 import type {
+  AgendaPayload,
   DashboardSnapshot,
   LmsClassCounts,
   StudentSummary,
@@ -104,7 +111,7 @@ function AttendanceBar({
   );
 }
 
-/** Extra LMS column — opens the student's class list to edit/publish. */
+/** LMS cloud classes (draft + published) — matches the student page list. */
 function LmsClassesCell({
   lmsStudentId,
   counts,
@@ -122,18 +129,18 @@ function LmsClassesCell({
       </span>
     );
   }
-  const total = counts?.total ?? 0;
+  const visible = (counts?.draft ?? 0) + (counts?.published ?? 0);
   const published = counts?.published ?? 0;
   return (
     <Link
       href={`/dashboard/students/${lmsStudentId}`}
       prefetch
       onClick={(e) => e.stopPropagation()}
-      title={`Open the ${total} LMS classes to edit/publish (${published} published)`}
+      title={`Open ${visible} LMS classes to edit/publish (${published} published). Ready column = local files still in classes/.`}
       className="inline-flex items-center gap-1.5 rounded-md border border-[#1e4d3a]/25 bg-[#e6f0e8] px-2 py-1 font-mono text-[11px] leading-tight text-[#1e4d3a] transition-colors hover:bg-[#d5e6d9]"
     >
       <BookOpen className="h-3 w-3 shrink-0" />
-      <span className="font-semibold">{total}</span>
+      <span className="font-semibold">{visible}</span>
       {published > 0 && <span className="opacity-70">{published} pub</span>}
     </Link>
   );
@@ -152,13 +159,18 @@ export function DashboardClient({
   useRefreshOnReshow();
   const [refreshing, startRefresh] = useTransition();
   const [syncedAt, setSyncedAt] = useState(snapshot?.syncedAt ?? null);
+  const [agenda, setAgenda] = useState<AgendaPayload | null>(snapshot?.agenda ?? null);
   const [query, setQuery] = useState("");
   const [selectedClass, setSelectedClass] = useState<SelectedClass | null>(null);
   const [openStudent, setOpenStudent] = useState<StudentSummary | null>(null);
   const [summaryStudent, setSummaryStudent] = useState<StudentSummary | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [folderName, setFolderName] = useState<string | null>(null);
+  const [workspaceBusy, setWorkspaceBusy] = useState(false);
+  const [workspaceMessage, setWorkspaceMessage] = useState("");
+  const workspaceRef = useRef<WorkspaceConnectHandle | null>(null);
 
   const data = snapshot?.dashboard ?? null;
-  const agenda = snapshot?.agenda ?? null;
 
   const students = useMemo(() => {
     if (!data) return [];
@@ -167,7 +179,7 @@ export function DashboardClient({
     return data.students.filter(
       (s) =>
         s.name.toLowerCase().includes(q) ||
-        s.displayName.toLowerCase().includes(q),
+        s.displayName.toLowerCase().includes(q)
     );
   }, [data, query]);
 
@@ -180,28 +192,130 @@ export function DashboardClient({
     return ids;
   }, [agenda]);
 
+  function afterSynced(iso: string) {
+    setSyncedAt(iso);
+    startRefresh(() => router.refresh());
+  }
+
+  function afterAgenda(next: AgendaPayload, iso: string) {
+    setAgenda(next);
+    setSyncedAt(iso);
+    startRefresh(() => router.refresh());
+  }
+
+  const headerControls = (
+    <div className="flex items-center gap-2">
+      <p className="font-mono text-xs text-muted-foreground">
+        {syncedAt ? `synced ${formatSyncedAt(syncedAt)}` : "not synced yet"}
+      </p>
+      {isSuperuser && (
+        <Link
+          href="/admin/usage"
+          className="font-mono text-xs text-primary underline-offset-2 hover:underline"
+        >
+          Admin
+        </Link>
+      )}
+      <button
+        type="button"
+        onClick={() => {
+          if (folderName) void workspaceRef.current?.pickFolder();
+          else setSettingsOpen(true);
+        }}
+        title={folderName ? `Workspace: ${folderName}` : "Connect workspace folder"}
+        className="relative rounded-md border p-1.5 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+      >
+        <FolderOpen className="h-3.5 w-3.5" />
+        {!folderName && (
+          <HelpCircle className="absolute -right-1.5 -top-1.5 h-3 w-3 text-[#8a5a10]" />
+        )}
+      </button>
+      <button
+        type="button"
+        onClick={() => void workspaceRef.current?.sync()}
+        disabled={workspaceBusy || refreshing}
+        title={folderName ? "Sync workspace now" : "Connect a folder to sync"}
+        className="rounded-md border p-1.5 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary disabled:opacity-50"
+      >
+        <RefreshCw
+          className={
+            workspaceBusy || refreshing ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"
+          }
+        />
+      </button>
+      <button
+        type="button"
+        onClick={() => setSettingsOpen(true)}
+        title="Settings"
+        className="rounded-md border p-1.5 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+      >
+        <Settings className="h-3.5 w-3.5" />
+      </button>
+      <form action="/auth/signout" method="post">
+        <button
+          type="submit"
+          title="Sign out"
+          className="rounded-md border p-1.5 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+        >
+          <LogOut className="h-3.5 w-3.5" />
+        </button>
+      </form>
+    </div>
+  );
+
+  const settingsDialog = (
+    <DashboardSettingsDialog
+      open={settingsOpen}
+      onOpenChange={setSettingsOpen}
+      folderName={folderName}
+      busy={workspaceBusy}
+      workspaceMessage={workspaceMessage}
+      controllerRef={workspaceRef}
+      onAgendaConnected={afterAgenda}
+    />
+  );
+
+  const workspaceController = (
+    <WorkspaceController
+      ref={workspaceRef}
+      onSynced={afterSynced}
+      onFolderChange={setFolderName}
+      onStatus={({ busy, message }) => {
+        setWorkspaceBusy(busy);
+        setWorkspaceMessage(message);
+      }}
+    />
+  );
+
   if (!snapshot || !data) {
     return (
       <main className="mx-auto max-w-3xl px-6 py-16">
-        <h1 className="font-display text-2xl font-semibold text-center">No dashboard data yet</h1>
+        {workspaceController}
+        <div className="mb-8 flex justify-end">{headerControls}</div>
+        <h1 className="font-display text-2xl font-semibold text-center">
+          No dashboard data yet
+        </h1>
         <p className="mt-2 text-center text-muted-foreground">
-          Connect your local workspace folder and sync to load the class ledger.
+          Connect your local workspace folder in Settings, then sync to load the class ledger.
         </p>
-        <div className="mt-6">
-          <WorkspaceConnect
-            onSynced={(iso) => {
-              setSyncedAt(iso);
-              startRefresh(() => router.refresh());
-            }}
-          />
+        <div className="mt-6 flex justify-center">
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            className="rounded-md border border-primary/30 bg-primary/10 px-4 py-2 text-sm text-primary hover:bg-primary/15"
+          >
+            Open settings
+          </button>
         </div>
+        {settingsDialog}
       </main>
     );
   }
 
   return (
     <main className="mx-auto max-w-6xl px-6 pb-24 pt-10">
-      {/* Header */}
+      {workspaceController}
+
       <header className="mb-8">
         <p className="mb-1 font-mono text-xs uppercase tracking-[0.25em] text-primary">
           English · Class Ledger
@@ -210,49 +324,14 @@ export function DashboardClient({
           <h1 className="font-display text-4xl font-semibold tracking-tight">
             Teacher&rsquo;s Dashboard
           </h1>
-          <div className="flex items-center gap-2">
-            <p className="font-mono text-xs text-muted-foreground">
-              synced {formatSyncedAt(syncedAt ?? snapshot.syncedAt)}
-            </p>
-            {isSuperuser && (
-              <Link
-                href="/admin/usage"
-                className="font-mono text-xs text-primary underline-offset-2 hover:underline"
-              >
-                Admin
-              </Link>
-            )}
-            <button
-              onClick={() => startRefresh(() => router.refresh())}
-              title="Reload dashboard data"
-              className="rounded-md border p-1.5 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
-            >
-              <RefreshCw className={refreshing ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />
-            </button>
-            <form action="/auth/signout" method="post">
-              <button
-                type="submit"
-                title="Sign out"
-                className="rounded-md border p-1.5 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
-              >
-                <LogOut className="h-3.5 w-3.5" />
-              </button>
-            </form>
-          </div>
+          {headerControls}
         </div>
         <div className="mt-3 h-px w-full bg-gradient-to-r from-primary/50 via-border to-transparent" />
+        {workspaceMessage && (
+          <p className="mt-2 font-mono text-xs text-muted-foreground">{workspaceMessage}</p>
+        )}
       </header>
 
-      <section className="mb-8 space-y-3">
-        <WorkspaceConnect
-          onSynced={(iso) => {
-            setSyncedAt(iso);
-            startRefresh(() => router.refresh());
-          }}
-        />
-      </section>
-
-      {/* Stats */}
       <section className="mb-8 flex flex-wrap gap-3">
         <StatBlock
           icon={<Users className="h-5 w-5" />}
@@ -269,17 +348,14 @@ export function DashboardClient({
           icon={<BookOpenCheck className="h-5 w-5" />}
           label="Classes ready"
           value={data.totals.readyTotal}
-          sub="prepared, not given yet"
+          sub="local files in classes/ — not yet all in LMS"
         />
-        <UsageCard />
       </section>
 
-      {/* Google Agenda */}
       <section className="mb-8">
-        <AgendaPanel agenda={agenda} />
+        <AgendaPanel agenda={agenda} onAgendaConnected={afterAgenda} />
       </section>
 
-      {/* Search */}
       <div className="mb-4 flex items-center gap-2">
         <div className="relative w-full max-w-xs">
           <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -295,13 +371,12 @@ export function DashboardClient({
         </p>
       </div>
 
-      {/* Students table */}
       <Card>
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead className="w-[210px]">Student</TableHead>
-              <TableHead className="w-[90px] text-center">Classes</TableHead>
+              <TableHead className="w-[90px] text-center">LMS</TableHead>
               <TableHead>Last classes — click for details</TableHead>
               <TableHead className="w-[90px] text-center">Total</TableHead>
               <TableHead className="w-[150px]">Attendance</TableHead>
@@ -397,10 +472,9 @@ export function DashboardClient({
       </Card>
 
       <p className="mt-4 text-center font-mono text-[11px] text-muted-foreground">
-        Ledger data comes from your last workspace sync —{" "}
-        <span className="text-foreground">control/journal.md</span> and{" "}
-        <span className="text-foreground">students/</span> folders on your computer. Trial
-        classes (aula show) appear in history but are not counted.
+        <span className="text-foreground">LMS</span> = classes in the cloud editor.{" "}
+        <span className="text-foreground">Ready</span> = markdown files still in local{" "}
+        <span className="text-foreground">classes/</span>. Sync imports Ready files into LMS.
       </p>
 
       <ClassDetailDialog selected={selectedClass} onClose={() => setSelectedClass(null)} />
@@ -421,9 +495,14 @@ export function DashboardClient({
         onClose={() => setOpenStudent(null)}
         onSelectClass={(cls) =>
           openStudent &&
-          setSelectedClass({ studentId: openStudent.id, studentName: openStudent.name, cls })
+          setSelectedClass({
+            studentId: openStudent.id,
+            studentName: openStudent.name,
+            cls,
+          })
         }
       />
+      {settingsDialog}
     </main>
   );
 }

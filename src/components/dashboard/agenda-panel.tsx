@@ -1,8 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { CalendarDays, CalendarX2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { UpcomingClassBadge } from "@/components/dashboard/class-badge";
+import { AgendaConnectForm } from "@/components/dashboard/agenda-connect-form";
 import { cn } from "@/lib/utils";
 import { upcomingTone } from "@/lib/class-visuals";
 import type { AgendaPayload } from "@/types/dashboard";
@@ -25,19 +28,45 @@ function warningTitle(e: AgendaPayload["events"][number]): string {
   return `${e.summary} — couldn't match to an active student folder`;
 }
 
-export function AgendaPanel({ agenda }: { agenda: AgendaPayload | null }) {
+export function AgendaPanel({
+  agenda,
+  onAgendaConnected,
+}: {
+  agenda: AgendaPayload | null;
+  onAgendaConnected?: (agenda: AgendaPayload, syncedAt: string) => void;
+}) {
+  const [showConnect, setShowConnect] = useState(false);
+
   if (!agenda) return null;
 
   if (!agenda.configured) {
     return (
       <Card className="border-dashed bg-transparent shadow-none">
-        <CardContent className="flex items-center gap-3 p-4 text-sm text-muted-foreground">
-          <CalendarDays className="h-4 w-4 shrink-0" />
-          <p className="flex-1">
-            <span className="font-semibold text-foreground">Google Agenda not connected</span>{" "}
-            — connect it in the local dashboard, then run{" "}
-            <span className="font-mono text-foreground">npm run sync</span>.
-          </p>
+        <CardContent className="space-y-3 p-4">
+          <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+            <CalendarDays className="h-4 w-4 shrink-0" />
+            <p className="flex-1">
+              <span className="font-semibold text-foreground">Google Agenda not connected</span>
+              {" — "}
+              link your calendar to see upcoming classes here.
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => setShowConnect((v) => !v)}
+            >
+              {showConnect ? "Hide" : "Connect agenda"}
+            </Button>
+          </div>
+          {showConnect && (
+            <AgendaConnectForm
+              onConnected={(next, syncedAt) => {
+                setShowConnect(false);
+                onAgendaConnected?.(next, syncedAt);
+              }}
+            />
+          )}
         </CardContent>
       </Card>
     );
@@ -46,12 +75,25 @@ export function AgendaPanel({ agenda }: { agenda: AgendaPayload | null }) {
   if (agenda.error) {
     return (
       <Card className="border-[#a3341f]/40">
-        <CardContent className="flex items-center gap-3 p-4 text-sm">
-          <CalendarX2 className="h-4 w-4 shrink-0 text-destructive" />
-          <p className="flex-1">
-            <span className="font-semibold text-destructive">Could not read Google Agenda.</span>{" "}
-            <span className="text-muted-foreground">{agenda.error}</span>
-          </p>
+        <CardContent className="space-y-3 p-4 text-sm">
+          <div className="flex items-center gap-3">
+            <CalendarX2 className="h-4 w-4 shrink-0 text-destructive" />
+            <p className="flex-1">
+              <span className="font-semibold text-destructive">Could not read Google Agenda.</span>{" "}
+              <span className="text-muted-foreground">{agenda.error}</span>
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setShowConnect((v) => !v)}
+            >
+              Fix connection
+            </Button>
+          </div>
+          {showConnect && (
+            <AgendaConnectForm onConnected={onAgendaConnected} />
+          )}
         </CardContent>
       </Card>
     );

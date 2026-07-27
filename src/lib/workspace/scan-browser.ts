@@ -22,14 +22,21 @@ async function readTextFile(handle: FileSystemFileHandle): Promise<string> {
   return await file.text();
 }
 
-async function listMdInDir(dir: FileSystemDirectoryHandle): Promise<string[]> {
-  const names: string[] = [];
+async function listMdInDir(
+  dir: FileSystemDirectoryHandle
+): Promise<Array<{ name: string; mtime: number }>> {
+  const files: Array<{ name: string; mtime: number }> = [];
   for await (const [name, entry] of dir.entries()) {
     if (entry.kind === "file" && name.toLowerCase().endsWith(".md")) {
-      names.push(name);
+      try {
+        const file = await (entry as FileSystemFileHandle).getFile();
+        files.push({ name, mtime: file.lastModified });
+      } catch {
+        files.push({ name, mtime: 0 });
+      }
     }
   }
-  return names.sort();
+  return files.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 async function getSubdir(
@@ -90,18 +97,19 @@ export async function scanWorkspace(
 
     const classesDir = await getSubdir(studentDir, "classes");
     const pastDir = await getSubdir(studentDir, "past-classes");
-    const readyNames = classesDir ? await listMdInDir(classesDir) : [];
-    const pastNames = pastDir ? await listMdInDir(pastDir) : [];
+    const readyFiles = classesDir ? await listMdInDir(classesDir) : [];
+    const pastFiles = pastDir ? await listMdInDir(pastDir) : [];
+    const readyNames = readyFiles.map((f) => f.name);
 
     students.push({
       id: folderName,
       studentMd,
       readyClassFiles: readyNames,
-      pastClassFileCount: pastNames.length,
+      pastClassFileCount: pastFiles.length,
     });
 
     if (classesDir) {
-      for (const name of readyNames) {
+      for (const { name } of readyFiles) {
         try {
           const fh = await classesDir.getFileHandle(name);
           const markdown = await readTextFile(fh);
@@ -115,17 +123,19 @@ export async function scanWorkspace(
       }
     }
 
-    if (pastDir && pastNames.length > 0) {
-      const latest = pastNames[pastNames.length - 1];
+    if (pastDir && pastFiles.length > 0) {
+      const latest = [...pastFiles].sort((a, b) => b.mtime - a.mtime)[0];
       try {
-        const fh = await pastDir.getFileHandle(latest);
+        const fh = await pastDir.getFileHandle(latest.name);
         const markdown = await readTextFile(fh);
         classFiles.push({
           folderId: folderName,
-          file: { filename: latest, markdown, status: "archived" },
+          file: { filename: latest.name, markdown, status: "archived" },
         });
       } catch {
-        errors.push(`Could not read students/${folderName}/past-classes/${latest}`);
+        errors.push(
+          `Could not read students/${folderName}/past-classes/${latest.name}`
+        );
       }
     }
   }

@@ -29,3 +29,7 @@ export function canCreateInvites(profile: Profile): boolean {
 export function snapshotPathForOwner(ownerId: string): string {
   return `${ownerId}/dashboard.json`;
 }
+
+export function agendaConfigPathForOwner(ownerId: string): string {
+  return `${ownerId}/agenda-config.json`;
+}

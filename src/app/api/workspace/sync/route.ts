@@ -1,20 +1,20 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { requireTeacher } from "@/lib/auth";
+import { loadAgendaConfig } from "@/lib/agenda-config";
 import { uploadDashboardSnapshot } from "@/lib/dashboard-snapshot";
-import { revalidatePath } from "next/cache";
+import { revalidateClassData } from "@/lib/data/revalidate-class-data";
 import { createServiceClient } from "@/lib/supabase/server";
 import { canonicalCollabRoomId } from "@/lib/collab-room";
 import {
   buildDashboardFromScan,
   emptyAgenda,
+  loadStudentsFromScan,
 } from "@/lib/workspace/build-dashboard";
+import { buildAgendaFromIcs } from "@/lib/workspace/build-agenda";
 import { checkQuota, recordUsageSnapshot } from "@/lib/usage/meter";
 import { evaluateBackendAlerts } from "@/lib/usage/alerts";
-import {
-  extractTitleFromMarkdown,
-  filenameToTitle,
-} from "@/lib/utils";
+import { extractTitleFromMarkdown, filenameToTitle } from "@/lib/utils";
 import type { DashboardSnapshot } from "@/types/dashboard";
 import type { WorkspaceStudentInput } from "@/lib/workspace/build-dashboard";
 
@@ -53,18 +53,6 @@ export async function POST(request: Request) {
     const studentInputs = body.students ?? [];
     const classFiles = body.classFiles ?? [];
 
-    const newBytes =
-      new TextEncoder().encode(journalContent).length +
-      classFiles.reduce((n, f) => n + new TextEncoder().encode(f.markdown).length, 0);
-
-    const quota = await checkQuota(profile.id, profile.plan, newBytes);
-    if (!quota.allowed) {
-      return NextResponse.json(
-        { error: quota.message, code: "STORAGE_FULL", level: quota.level },
-        { status: 413 }
-      );
-    }
-
     const supabase = createServiceClient();
     const dashboard = buildDashboardFromScan(journalContent, studentInputs);
 
@@ -77,6 +65,8 @@ export async function POST(request: Request) {
     const lmsStudentIds: Record<string, string> = {};
     let imported = 0;
     let updated = 0;
+    let skippedQuota = 0;
+    const touchedStudentIds: string[] = [];
 
     for (const summary of dashboard.students) {
       const folder = summary.id;
@@ -118,6 +108,7 @@ export async function POST(request: Request) {
       }
 
       lmsStudentIds[folder] = student.id;
+      touchedStudentIds.push(student.id);
 
       const { data: existingClasses } = await supabase
         .from("classes")
@@ -145,12 +136,12 @@ export async function POST(request: Request) {
           continue;
         }
 
-        const growthCheck = await checkQuota(
-          profile.id,
-          profile.plan,
-          new TextEncoder().encode(file.markdown).length
-        );
-        if (!growthCheck.allowed) continue;
+        const fileBytes = new TextEncoder().encode(file.markdown).length;
+        const growthCheck = await checkQuota(profile.id, profile.plan, fileBytes);
+        if (!growthCheck.allowed) {
+          skippedQuota++;
+          continue;
+        }
 
         const classId = randomUUID();
         const title = extractTitleFromMarkdown(
@@ -171,10 +162,20 @@ export async function POST(request: Request) {
       }
     }
 
+    let agenda = emptyAgenda();
+    const agendaConfig = await loadAgendaConfig(profile.id);
+    if (agendaConfig) {
+      agenda = await buildAgendaFromIcs(
+        agendaConfig,
+        dashboard.students,
+        loadStudentsFromScan(studentInputs)
+      );
+    }
+
     const snapshot: DashboardSnapshot = {
       syncedAt: new Date().toISOString(),
       dashboard,
-      agenda: emptyAgenda(),
+      agenda,
       lmsStudentIds,
     };
 
@@ -182,14 +183,21 @@ export async function POST(request: Request) {
     await recordUsageSnapshot(profile.id);
     await evaluateBackendAlerts();
 
-    revalidatePath("/dashboard");
+    for (const studentId of touchedStudentIds) {
+      revalidateClassData({ studentId });
+    }
 
     return NextResponse.json({
       ok: true,
       imported,
       updated,
+      skippedQuota,
       syncedAt: snapshot.syncedAt,
-      warnings: [],
+      warnings: skippedQuota
+        ? [
+            `${skippedQuota} class file(s) were not imported because cloud space is full.`,
+          ]
+        : [],
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Sync failed";
