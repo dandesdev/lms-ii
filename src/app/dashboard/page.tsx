@@ -5,10 +5,11 @@ import { loadDashboardSnapshot } from "@/lib/dashboard-snapshot";
 import { getClassCountsByStudent } from "@/lib/data/classes";
 import { DashboardClient } from "@/components/dashboard/dashboard-client";
 import { RouteLoading } from "@/components/route-loading";
+import { isTeacherRole } from "@/types/database";
 
 export default async function DashboardPage() {
   const profile = await getProfile();
-  if (!profile || profile.role !== "teacher") {
+  if (!profile || !isTeacherRole(profile.role)) {
     redirect("/login");
   }
 
@@ -32,10 +33,19 @@ export default async function DashboardPage() {
 }
 
 async function DashboardBody() {
+  const profile = await getProfile();
+  if (!profile) redirect("/login");
+
   const [snapshot, classCounts] = await Promise.all([
-    loadDashboardSnapshot(),
-    getClassCountsByStudent(),
+    loadDashboardSnapshot(profile.id),
+    getClassCountsByStudent(profile.id),
   ]);
 
-  return <DashboardClient snapshot={snapshot} classCounts={classCounts} />;
+  return (
+    <DashboardClient
+      snapshot={snapshot}
+      classCounts={classCounts}
+      isSuperuser={profile.role === "superuser"}
+    />
+  );
 }

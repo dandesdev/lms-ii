@@ -9,6 +9,7 @@ import { canonicalCollabRoomId } from "@/lib/collab-room";
 import { ensureCollabRoomSeeded } from "@/lib/seed-collab-yjs";
 import { revalidateClassData } from "@/lib/data/revalidate-class-data";
 import { randomUUID } from "crypto";
+import { checkQuota } from "@/lib/usage/meter";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -55,7 +56,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    await requireTeacher();
+    const profile = await requireTeacher();
     const body = await request.json();
     const { studentId, markdown, filename, title: requestedTitle } = body;
 
@@ -67,6 +68,15 @@ export async function POST(request: Request) {
     }
 
     const md = typeof markdown === "string" ? markdown : "";
+    const growth = new TextEncoder().encode(md).length;
+    const quota = await checkQuota(profile.id, profile.plan, growth);
+    if (!quota.allowed) {
+      return NextResponse.json(
+        { error: quota.message, code: "STORAGE_FULL" },
+        { status: 413 }
+      );
+    }
+
     const fallbackTitle =
       (typeof requestedTitle === "string" && requestedTitle.trim()) ||
       (filename ? filenameToTitle(filename) : "Untitled Class");

@@ -8,6 +8,7 @@ import {
 import { getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { ClassRecord } from "@/types/database";
+import { isTeacherRole } from "@/types/database";
 
 function getLiveblocks() {
   const secret = process.env.LIVEBLOCKS_SECRET_KEY;
@@ -50,7 +51,7 @@ export async function POST(request: Request) {
     getProfile(),
     getClassByRoomId(room),
   ]);
-  const isTeacher = profile?.role === "teacher";
+  const isTeacher = isTeacherRole(profile?.role);
 
   // Resolve by liveblocks_room_id (supports class-{uuid}-flat1 epochs).
   // Do NOT parse the class id from the room string — suffixes break that.

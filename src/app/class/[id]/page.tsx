@@ -10,6 +10,7 @@ import { LinkNotRecognized } from "@/components/link-not-recognized";
 import { PublishControls } from "@/components/publish-controls";
 import { ClassOpeningLoading } from "@/components/class-opening-loading";
 import type { Profile } from "@/types/database";
+import { isTeacherRole } from "@/types/database";
 
 export default async function ClassPage({
   params,
@@ -37,7 +38,7 @@ async function ClassPageBody({
   classId: string;
   profile: Profile;
 }) {
-  const isTeacher = profile.role === "teacher";
+  const isTeacher = isTeacherRole(profile.role);
   const classRecord = await getClassPageRecord(classId);
 
   if (!classRecord) {

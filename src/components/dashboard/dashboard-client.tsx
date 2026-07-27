@@ -13,6 +13,8 @@ import {
   Users,
 } from "lucide-react";
 import { AgendaPanel } from "@/components/dashboard/agenda-panel";
+import { UsageCard } from "@/components/dashboard/usage-card";
+import { WorkspaceConnect } from "@/components/workspace/workspace-connect";
 import { ClassSummaryDialog } from "@/components/dashboard/class-summary-dialog";
 import { HistoryClassBadge, ReadyCountBadge } from "@/components/dashboard/class-badge";
 import { ClassDetailDialog, type SelectedClass } from "@/components/dashboard/class-detail-dialog";
@@ -114,7 +116,7 @@ function LmsClassesCell({
     return (
       <span
         className="font-mono text-[11px] text-muted-foreground"
-        title="Not synced to the LMS yet — run npm run sync"
+        title="Not synced to the LMS yet — connect your workspace folder"
       >
         —
       </span>
@@ -140,13 +142,16 @@ function LmsClassesCell({
 export function DashboardClient({
   snapshot,
   classCounts,
+  isSuperuser,
 }: {
   snapshot: DashboardSnapshot | null;
   classCounts: Record<string, LmsClassCounts>;
+  isSuperuser?: boolean;
 }) {
   const router = useRouter();
   useRefreshOnReshow();
   const [refreshing, startRefresh] = useTransition();
+  const [syncedAt, setSyncedAt] = useState(snapshot?.syncedAt ?? null);
   const [query, setQuery] = useState("");
   const [selectedClass, setSelectedClass] = useState<SelectedClass | null>(null);
   const [openStudent, setOpenStudent] = useState<StudentSummary | null>(null);
@@ -177,13 +182,19 @@ export function DashboardClient({
 
   if (!snapshot || !data) {
     return (
-      <main className="mx-auto max-w-3xl px-6 py-20 text-center">
-        <h1 className="font-display text-2xl font-semibold">No dashboard data yet</h1>
-        <p className="mt-2 text-muted-foreground">
-          Run <span className="font-mono text-foreground">npm run sync</span> inside the{" "}
-          <span className="font-mono text-foreground">lms/</span> folder to upload the local
-          students, classes and journal data.
+      <main className="mx-auto max-w-3xl px-6 py-16">
+        <h1 className="font-display text-2xl font-semibold text-center">No dashboard data yet</h1>
+        <p className="mt-2 text-center text-muted-foreground">
+          Connect your local workspace folder and sync to load the class ledger.
         </p>
+        <div className="mt-6">
+          <WorkspaceConnect
+            onSynced={(iso) => {
+              setSyncedAt(iso);
+              startRefresh(() => router.refresh());
+            }}
+          />
+        </div>
       </main>
     );
   }
@@ -201,11 +212,19 @@ export function DashboardClient({
           </h1>
           <div className="flex items-center gap-2">
             <p className="font-mono text-xs text-muted-foreground">
-              synced {formatSyncedAt(snapshot.syncedAt)}
+              synced {formatSyncedAt(syncedAt ?? snapshot.syncedAt)}
             </p>
+            {isSuperuser && (
+              <Link
+                href="/admin/usage"
+                className="font-mono text-xs text-primary underline-offset-2 hover:underline"
+              >
+                Admin
+              </Link>
+            )}
             <button
               onClick={() => startRefresh(() => router.refresh())}
-              title="Reload — data updates when you run npm run sync locally"
+              title="Reload dashboard data"
               className="rounded-md border p-1.5 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
             >
               <RefreshCw className={refreshing ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />
@@ -223,6 +242,15 @@ export function DashboardClient({
         </div>
         <div className="mt-3 h-px w-full bg-gradient-to-r from-primary/50 via-border to-transparent" />
       </header>
+
+      <section className="mb-8 space-y-3">
+        <WorkspaceConnect
+          onSynced={(iso) => {
+            setSyncedAt(iso);
+            startRefresh(() => router.refresh());
+          }}
+        />
+      </section>
 
       {/* Stats */}
       <section className="mb-8 flex flex-wrap gap-3">
@@ -243,6 +271,7 @@ export function DashboardClient({
           value={data.totals.readyTotal}
           sub="prepared, not given yet"
         />
+        <UsageCard />
       </section>
 
       {/* Google Agenda */}
@@ -368,10 +397,10 @@ export function DashboardClient({
       </Card>
 
       <p className="mt-4 text-center font-mono text-[11px] text-muted-foreground">
-        Data comes from the last <span className="text-foreground">npm run sync</span> — it reads{" "}
-        <span className="text-foreground">control/journal.md</span>, the{" "}
-        <span className="text-foreground">students/</span> folders and Google Agenda locally and
-        uploads everything here. Trial classes (aula show) are shown in history but not counted.
+        Ledger data comes from your last workspace sync —{" "}
+        <span className="text-foreground">control/journal.md</span> and{" "}
+        <span className="text-foreground">students/</span> folders on your computer. Trial
+        classes (aula show) appear in history but are not counted.
       </p>
 
       <ClassDetailDialog selected={selectedClass} onClose={() => setSelectedClass(null)} />

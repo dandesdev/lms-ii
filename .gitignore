@@ -20,6 +20,9 @@
 # production
 /build
 
+# local dev notes (roadmap, deploy checklists — not for the repo)
+/local-dev/
+
 # misc
 .DS_Store
 *.pem

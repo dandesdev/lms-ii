@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth";
 import { revalidateClassData } from "@/lib/data/revalidate-class-data";
 import type { ClassStatus } from "@/types/database";
+import { recordUsageSnapshot } from "@/lib/usage/meter";
+
+const IMAGES_BUCKET = "class-images";
 
 const ALLOWED_STATUSES = new Set<ClassStatus>([
   "draft",
@@ -67,9 +70,10 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireTeacher();
+    const profile = await requireTeacher();
     const { id } = await params;
     const supabase = await createClient();
+    const service = createServiceClient();
 
     const { data: existing } = await supabase
       .from("classes")
@@ -79,6 +83,20 @@ export async function DELETE(
 
     const { error } = await supabase.from("classes").delete().eq("id", id);
     if (error) throw error;
+
+    const { data: objects } = await service.storage.from(IMAGES_BUCKET).list(id);
+    if (objects?.length) {
+      const paths = objects.map((o) => `${id}/${o.name}`);
+      await service.storage.from(IMAGES_BUCKET).remove(paths);
+    }
+  const ownerPrefix = `${profile.id}/${id}`;
+  const { data: ownerObjects } = await service.storage.from(IMAGES_BUCKET).list(`${profile.id}/${id}`);
+  if (ownerObjects?.length) {
+    const paths = ownerObjects.map((o) => `${ownerPrefix}/${o.name}`);
+    await service.storage.from(IMAGES_BUCKET).remove(paths);
+  }
+
+    await recordUsageSnapshot(profile.id);
 
     revalidateClassData({
       studentId: existing?.student_id,

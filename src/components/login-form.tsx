@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
@@ -14,14 +14,35 @@ import {
 } from "@/components/ui/card";
 import { Eye, EyeOff, GraduationCap } from "lucide-react";
 
-export function LoginForm({ next }: { next?: string }) {
-  const [email, setEmail] = useState("");
+type LoginFormProps = {
+  next?: string;
+  inviteCode?: string;
+  defaultEmail?: string;
+};
+
+export function LoginForm({ next, inviteCode, defaultEmail }: LoginFormProps) {
+  const [email, setEmail] = useState(defaultEmail ?? "");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [mode, setMode] = useState<"login" | "signup">("login");
+  const allowTeacherSignup = Boolean(inviteCode);
+  const [mode, setMode] = useState<"login" | "signup">(
+    inviteCode ? "signup" : "login"
+  );
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const router = useRouter();
+
+  useEffect(() => {
+    if (defaultEmail) setEmail(defaultEmail);
+  }, [defaultEmail]);
+
+  async function ensureProfileWithInvite() {
+    await fetch("/api/auth/ensure-profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ inviteCode: inviteCode ?? null }),
+    });
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -31,11 +52,17 @@ export function LoginForm({ next }: { next?: string }) {
 
     try {
       if (mode === "signup") {
+        if (!allowTeacherSignup) {
+          throw new Error("Teacher accounts require an invite link.");
+        }
+        const inviteQuery = inviteCode
+          ? `&invite=${encodeURIComponent(inviteCode)}`
+          : "";
         const { error } = await supabase.auth.signUp({
           email,
           password,
           options: {
-            emailRedirectTo: `${window.location.origin}/auth/callback`,
+            emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next || "/")}${inviteQuery}`,
           },
         });
         if (error) throw error;
@@ -46,7 +73,7 @@ export function LoginForm({ next }: { next?: string }) {
           password,
         });
         if (error) throw error;
-        await fetch("/api/auth/ensure-profile", { method: "POST" });
+        await ensureProfileWithInvite();
         router.push(next || "/");
         router.refresh();
       }
@@ -112,16 +139,23 @@ export function LoginForm({ next }: { next?: string }) {
             </Link>
           </p>
         )}
-        <p className="mt-3 text-center text-sm text-[#6b6558]">
-          {mode === "login" ? "New here?" : "Already have an account?"}{" "}
-          <button
-            type="button"
-            className="font-medium text-[#1e4d3a] underline"
-            onClick={() => setMode(mode === "login" ? "signup" : "login")}
-          >
-            {mode === "login" ? "Sign up" : "Sign in"}
-          </button>
-        </p>
+        {allowTeacherSignup && (
+          <p className="mt-3 text-center text-sm text-[#6b6558]">
+            {mode === "login" ? "New teacher?" : "Already have an account?"}{" "}
+            <button
+              type="button"
+              className="font-medium text-[#1e4d3a] underline"
+              onClick={() => setMode(mode === "login" ? "signup" : "login")}
+            >
+              {mode === "login" ? "Create account" : "Sign in"}
+            </button>
+          </p>
+        )}
+        {!allowTeacherSignup && mode === "login" && (
+          <p className="mt-3 text-center text-sm text-[#6b6558]">
+            Teacher accounts are invite-only. Students sign in with the email their teacher added.
+          </p>
+        )}
         {message && (
           <p className="mt-3 text-center text-sm text-[#6b6558]">{message}</p>
         )}

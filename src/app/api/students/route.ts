@@ -21,7 +21,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    await requireTeacher();
+    const profile = await requireTeacher();
     const body = await request.json();
     const { name, level, email } = body;
 
@@ -36,6 +36,7 @@ export async function POST(request: Request) {
         name: name.trim(),
         level: level?.trim() || null,
         email: email?.trim() || null,
+        owner_id: profile.id,
       })
       .select("*")
       .single();

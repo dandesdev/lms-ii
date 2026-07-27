@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { requireTeacher } from "@/lib/auth";
+import { checkQuota, recordUsageSnapshot } from "@/lib/usage/meter";
 
 const BUCKET = "class-images";
 
 export async function POST(request: Request) {
+  const profile = await requireTeacher().catch(() => null);
+  if (!profile) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -21,11 +28,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing file or classId" }, { status: 400 });
   }
 
-  const ext = file.name.split(".").pop() || "png";
-  const path = `${classId}/${Date.now()}.${ext}`;
+  const quota = await checkQuota(profile.id, profile.plan, file.size);
+  if (!quota.allowed) {
+    return NextResponse.json(
+      { error: quota.message, code: "STORAGE_FULL" },
+      { status: 413 }
+    );
+  }
 
-  // Storage writes go through the service role — the bucket has no RLS
-  // policies for end users, so user-scoped uploads are rejected.
+  const ext = file.name.split(".").pop() || "png";
+  const path = `${profile.id}/${classId}/${Date.now()}.${ext}`;
+
   const storage = createServiceClient().storage;
 
   let { error: uploadError } = await storage
@@ -42,6 +55,8 @@ export async function POST(request: Request) {
   if (uploadError) {
     return NextResponse.json({ error: uploadError.message }, { status: 500 });
   }
+
+  await recordUsageSnapshot(profile.id);
 
   const {
     data: { publicUrl },

@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getProfile } from "@/lib/auth";
+import { isTeacherRole } from "@/types/database";
 import { getPublishedStudentClasses } from "@/lib/data/classes";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,7 +16,7 @@ export default async function StudentPortalPage() {
     redirect("/login?next=/student");
   }
 
-  if (profile.role === "teacher") {
+  if (isTeacherRole(profile.role)) {
     redirect("/dashboard");
   }
 

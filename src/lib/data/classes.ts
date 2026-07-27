@@ -119,17 +119,20 @@ export async function getClassPageRecord(
   return data as ClassPageRecord | null;
 }
 
-export async function getClassCountsByStudent(): Promise<
-  Record<string, LmsClassCounts>
-> {
+export async function getClassCountsByStudent(
+  ownerId?: string
+): Promise<Record<string, LmsClassCounts>> {
   "use cache";
   cacheLife("minutes");
   cacheTag(tags.classCounts);
+  if (ownerId) cacheTag(`class-counts:${ownerId}`);
 
   const supabase = createServiceClient();
-  const { data, error } = await supabase
-    .from("classes")
-    .select("student_id, status");
+  let query = supabase.from("classes").select("student_id, status, students(owner_id)");
+  if (ownerId) {
+    query = query.eq("students.owner_id", ownerId);
+  }
+  const { data, error } = await query;
   if (error) throw error;
 
   const classCounts: Record<string, LmsClassCounts> = {};

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getProfile } from "@/lib/auth";
+import { isTeacherRole } from "@/types/database";
 
 export default async function HomePage() {
   const profile = await getProfile();
@@ -8,7 +9,7 @@ export default async function HomePage() {
     redirect("/login");
   }
 
-  if (profile.role === "teacher") {
+  if (isTeacherRole(profile.role)) {
     redirect("/dashboard");
   }
 

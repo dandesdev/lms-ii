@@ -7,17 +7,18 @@ This lives in `lms/` and is **completely separate** from the local teacher dashb
 ## Stack
 
 - **Next.js** (App Router) on Vercel
-- **Supabase** — auth, Postgres, image storage
+- **Supabase** — auth, Postgres, image storage, per-teacher quotas
 - **Liveblocks** + **Lexical** — realtime collaborative editor with cursors and selections
 - **Tailwind CSS**
 
 ## Features
 
-- Teacher dashboard: manage students, import `.md` files, publish classes
-- Collaborative editor: bold/italic/underline, headings, lists, tables, colors, highlights, section backgrounds, images, present/zoom mode
+- Teacher dashboard: workspace folder sync, student list, usage quotas
+- Collaborative editor: formatting, sections, images, present/zoom mode
 - Realtime co-editing with remote cursors and selection highlights
 - Share links (`/c/[token]`) for guests without login
 - Student portal: published classes for logged-in students
+- Multi-teacher: invite-only onboarding, superuser admin usage + alerts
 
 ## Setup
 
@@ -25,8 +26,9 @@ This lives in `lms/` and is **completely separate** from the local teacher dashb
 
 1. Create a project at [supabase.com](https://supabase.com)
 2. Run the SQL in [`supabase/schema.sql`](supabase/schema.sql)
-3. Create a public storage bucket named `class-images`
-4. Copy your project URL, anon key, and service role key
+3. Run migrations in [`supabase/migrations/`](supabase/migrations/) (especially `20260727_multi_tenant_invites_quotas.sql`)
+4. Ensure storage buckets: `class-images` (public), `lms-data` (private)
+5. Copy your project URL, anon key, and service role key
 
 ### 2. Liveblocks
 
@@ -43,11 +45,13 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 SUPABASE_SERVICE_ROLE_KEY=...
 LIVEBLOCKS_SECRET_KEY=...
 NEXT_PUBLIC_LIVEBLOCKS_PUBLIC_KEY=...
-TEACHER_EMAIL=your-email@example.com
+SUPERUSER_EMAIL=your-email@example.com
 NEXT_PUBLIC_APP_URL=http://localhost:3000
+CRON_SECRET=...          # random string for usage cron
+RESEND_API_KEY=...       # optional — superuser alert emails
 ```
 
-The email matching `TEACHER_EMAIL` gets the `teacher` role on first login.
+`SUPERUSER_EMAIL` gets the `superuser` role on first login. Additional teachers need an invite link from the superuser (`/admin/invites`).
 
 ### 4. Run locally
 
@@ -64,35 +68,46 @@ Open [http://localhost:3000](http://localhost:3000).
 1. Push the repo and import the `lms` folder as a Vercel project (root directory: `lms`)
 2. Add the same environment variables in Vercel
 3. Set `NEXT_PUBLIC_APP_URL` to your production URL
-4. In Supabase Auth settings → URL Configuration, add redirect allowlist entries for:
+4. In Supabase Auth → URL Configuration, add redirect allowlist entries for:
    - `{NEXT_PUBLIC_APP_URL}/auth/callback`
    - `{NEXT_PUBLIC_APP_URL}/auth/callback?next=/reset-password`
    (or a wildcard like `{NEXT_PUBLIC_APP_URL}/**`)
 
 ## Workflow
 
-1. **Create class** with your AI writer (markdown file on your computer, as today)
-2. **Sign in** as teacher at `/login`
-3. **Add student** on the dashboard (include their email if they will log in)
-4. Open the student → **Import markdown** → pick the `.md` file
-5. Edit the class page, then click **Publish**
-6. **Share** the link with your student, or they sign in at `/student` to see published classes
+1. **Prepare files** on your computer (`control/journal.md`, `students/...`) — see [/docs/getting-started](/docs/getting-started)
+2. **Sign in** as superuser or invited teacher at `/login`
+3. On the dashboard, **Connect workspace** and **Sync now** (or run `npm run sync` from `lms/`)
+4. Open a student → edit classes, **Publish**, share link or student login
+5. Superuser: monitor platform usage at `/admin/usage` and create teacher invites at `/admin/invites`
 
 ## Routes
 
 | Route | Who | Purpose |
 |-------|-----|---------|
-| `/dashboard` | Teacher | Student list, stats |
+| `/dashboard` | Teacher / superuser | Students, workspace sync, usage |
+| `/docs/getting-started` | Anyone | Folder layout and browser requirements |
+| `/admin/usage` | Superuser | Platform + per-teacher usage |
+| `/admin/invites` | Superuser | Create/revoke teacher invites |
+| `/invite/[code]` | Invited teacher | Signup with invite |
 | `/dashboard/students/[id]` | Teacher | Import classes, class list |
 | `/class/[id]` | Teacher / linked student | Collaborative editor |
 | `/c/[shareToken]` | Anyone (if published) | Guest collaborative editor |
 | `/student` | Student | Published class list |
 | `/login` | Everyone | Auth |
-| `/forgot-password` | Everyone | Request password reset email |
-| `/reset-password` | Recovery session | Set a new password after email link |
+
+## Sync options
+
+| Method | When |
+|--------|------|
+| Browser **Connect workspace** | Chrome/Edge on desktop — preferred |
+| `npm run sync` | CLI; reads parent `English/` folder layout; requires one prior login |
+
+Both upload to `lms-data/{your-profile-id}/dashboard.json` and upsert students/classes for your tenant.
 
 ## Notes
 
-- Markdown files stay on your computer; import is a one-way upload into the cloud editor
+- Markdown files stay on your computer; sync uploads seeds into the cloud editor
 - Draft classes are teacher-only; students can edit only after publish
+- At 100% quota, new uploads and imports are blocked; existing classes still work
 - The local `app/` dashboard is unchanged and still reads files from disk

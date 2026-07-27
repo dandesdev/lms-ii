@@ -1,45 +1,28 @@
 /**
- * Syncs local teacher data into the LMS Supabase project:
- *
- *   1. Students  — one LMS student per active local folder (level/email refreshed).
- *   2. Classes   — every file in classes/ becomes a draft, the latest
- *                  past-classes/ file becomes an archived class (deduped by filename).
- *   3. Dashboard — the exact payload the local dashboard shows (journal history,
- *                  attendance, ready files, Google Agenda) is stored as a JSON
- *                  snapshot the LMS dashboard renders 1:1.
+ * Syncs local teacher data into the LMS Supabase project (CLI alternative to browser workspace sync).
  *
  * Usage (from lms/):  npm run sync
+ *
+ * Requires SUPERUSER_EMAIL or TEACHER_EMAIL in .env.local and that user to have signed in once
+ * (so a profiles row exists). Snapshot path: lms-data/{ownerId}/dashboard.json
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  buildDashboard,
-  type DashboardPayload,
-  type StudentSummary,
-} from "../../app/server/data";
-import { buildAgenda, type AgendaPayload } from "../../app/server/calendar";
+import { buildDashboard } from "../src/lib/workspace/build-dashboard-node";
+import { emptyAgenda } from "../src/lib/workspace/build-dashboard";
+import type { DashboardSnapshot } from "../src/types/dashboard";
+import type { StudentSummary } from "../src/types/dashboard";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LMS_ROOT = path.resolve(__dirname, "..");
 const ENGLISH_ROOT = path.resolve(LMS_ROOT, "..");
-const APP_DIR = path.join(ENGLISH_ROOT, "app");
 const STUDENTS_DIR = path.join(ENGLISH_ROOT, "students");
 
-// Keep in sync with src/types/dashboard.ts (SNAPSHOT_BUCKET / SNAPSHOT_FILE).
 const SNAPSHOT_BUCKET = "lms-data";
-const SNAPSHOT_FILE = "dashboard.json";
 const IMAGES_BUCKET = "class-images";
-
-interface DashboardSnapshot {
-  syncedAt: string;
-  dashboard: DashboardPayload;
-  agenda: AgendaPayload;
-  /** local folder id → LMS students.id */
-  lmsStudentIds: Record<string, string>;
-}
 
 function loadEnv(): Record<string, string> {
   const envPath = path.join(LMS_ROOT, ".env.local");
@@ -49,6 +32,10 @@ function loadEnv(): Record<string, string> {
     if (m) env[m[1]] = m[2].trim();
   }
   return env;
+}
+
+function snapshotPathForOwner(ownerId: string): string {
+  return `${ownerId}/dashboard.json`;
 }
 
 function cleanEmail(raw: string | undefined): string | null {
@@ -114,6 +101,28 @@ async function ensureBuckets(supabase: SupabaseClient): Promise<void> {
   }
 }
 
+async function resolveOwnerId(
+  supabase: SupabaseClient,
+  env: Record<string, string>
+): Promise<string> {
+  const email = (env.SUPERUSER_EMAIL || env.TEACHER_EMAIL)?.toLowerCase();
+  if (!email) {
+    throw new Error("Set SUPERUSER_EMAIL or TEACHER_EMAIL in lms/.env.local");
+  }
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id")
+    .ilike("email", email)
+    .maybeSingle();
+  if (error) throw new Error(`Lookup owner profile: ${error.message}`);
+  if (!data?.id) {
+    throw new Error(
+      `No profile for ${email}. Sign in to the LMS once, then run sync again.`
+    );
+  }
+  return data.id;
+}
+
 interface LmsStudent {
   id: string;
   name: string;
@@ -124,7 +133,8 @@ interface LmsStudent {
 async function syncStudent(
   supabase: SupabaseClient,
   existing: LmsStudent[],
-  summary: StudentSummary
+  summary: StudentSummary,
+  ownerId: string
 ): Promise<LmsStudent> {
   const folder = summary.id;
   const lower = (s: string) => s.toLowerCase();
@@ -143,7 +153,7 @@ async function syncStudent(
   if (!student) {
     const { data, error } = await supabase
       .from("students")
-      .insert({ name: summary.name, level: summary.level, email })
+      .insert({ name: summary.name, level: summary.level, email, owner_id: ownerId })
       .select("id, name, level, email")
       .single();
     if (error) throw new Error(`Insert student ${summary.name}: ${error.message}`);
@@ -198,8 +208,6 @@ async function syncClasses(
     const known = byFile.get(file.name.toLowerCase());
 
     if (known) {
-      // Refresh the markdown seed if the local file changed. This does not
-      // touch documents already edited in the LMS (Liveblocks owns those).
       if (known.markdown_source !== markdown) {
         const { error: e } = await supabase
           .from("classes")
@@ -240,18 +248,21 @@ async function main() {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
+  const ownerId = await resolveOwnerId(supabase, env);
+
   console.log("Building local dashboard payload…");
   const dashboard = buildDashboard(ENGLISH_ROOT);
-  const agenda = await buildAgenda(APP_DIR, ENGLISH_ROOT);
+  const agenda = emptyAgenda();
   console.log(
-    `  ${dashboard.students.length} students · ${dashboard.totals.classesLogged} classes logged · ${agenda.events.length} agenda events`
+    `  ${dashboard.students.length} students · ${dashboard.totals.classesLogged} classes logged`
   );
 
   await ensureBuckets(supabase);
 
   const { data: existingStudents, error: listErr } = await supabase
     .from("students")
-    .select("id, name, level, email");
+    .select("id, name, level, email")
+    .eq("owner_id", ownerId);
   if (listErr) throw new Error(`List students: ${listErr.message}`);
   const existing = (existingStudents ?? []) as LmsStudent[];
 
@@ -260,7 +271,7 @@ async function main() {
   let totalUpdated = 0;
 
   for (const summary of dashboard.students) {
-    const student = await syncStudent(supabase, existing, summary);
+    const student = await syncStudent(supabase, existing, summary, ownerId);
     lmsStudentIds[summary.id] = student.id;
     const { imported, updated } = await syncClasses(supabase, student, summary.id);
     totalImported += imported;
@@ -274,19 +285,21 @@ async function main() {
     lmsStudentIds,
   };
 
+  const snapshotPath = snapshotPathForOwner(ownerId);
   const { error: uploadErr } = await supabase.storage
     .from(SNAPSHOT_BUCKET)
-    .upload(SNAPSHOT_FILE, Buffer.from(JSON.stringify(snapshot)), {
+    .upload(snapshotPath, Buffer.from(JSON.stringify(snapshot)), {
       contentType: "application/json",
       upsert: true,
     });
   if (uploadErr) throw new Error(`Upload snapshot: ${uploadErr.message}`);
 
   console.log("\n=== SYNC DONE ===");
+  console.log(`Owner:             ${ownerId}`);
   console.log(`Students synced:   ${dashboard.students.length}`);
   console.log(`Classes imported:  ${totalImported}`);
   console.log(`Sources refreshed: ${totalUpdated}`);
-  console.log(`Snapshot uploaded: ${SNAPSHOT_BUCKET}/${SNAPSHOT_FILE}`);
+  console.log(`Snapshot uploaded: ${SNAPSHOT_BUCKET}/${snapshotPath}`);
 }
 
 main().catch((err) => {

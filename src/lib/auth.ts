@@ -1,13 +1,10 @@
 import { cache } from "react";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { consumeInvite, getInviteByCode } from "@/lib/invites";
 import type { Profile, UserRole } from "@/types/database";
+import { isTeacherRole } from "@/types/database";
+import { resolveBootstrapRole } from "@/lib/platform";
 
-/**
- * Per-request memoization via React `cache()`. Dedupes auth.getUser + profile
- * lookups when middleware-adjacent RSC and nested helpers call these in the
- * same render/request (e.g. requireTeacher → getProfile, or parallel awaits).
- * Does not share across distinct HTTP requests — safe for multi-user.
- */
 export const getSessionUser = cache(async () => {
   const supabase = await createClient();
   const {
@@ -33,12 +30,10 @@ export const getProfile = cache(async (): Promise<Profile | null> => {
 export async function ensureProfile(
   userId: string,
   email: string,
-  displayName?: string
+  displayName?: string,
+  inviteCode?: string | null
 ): Promise<Profile> {
   const supabase = createServiceClient();
-  const teacherEmail = process.env.TEACHER_EMAIL?.toLowerCase();
-  const role: UserRole =
-    email.toLowerCase() === teacherEmail ? "teacher" : "student";
 
   const { data: existing } = await supabase
     .from("profiles")
@@ -50,32 +45,70 @@ export async function ensureProfile(
     return existing as Profile;
   }
 
+  let role: UserRole = resolveBootstrapRole(email);
+  let plan = role === "superuser" ? "free" : "free";
+  let canInvite = role === "superuser";
+  let invitedBy: string | null = null;
+  let invite: Awaited<ReturnType<typeof getInviteByCode>> = null;
+
+  if (role !== "superuser" && inviteCode) {
+    invite = await getInviteByCode(inviteCode);
+    if (invite && !invite.used_at && !invite.revoked_at) {
+      role = "teacher";
+      plan = invite.plan;
+      canInvite = invite.can_invite_teachers;
+      invitedBy = invite.created_by;
+    }
+  }
+
+  const insertPayload: Record<string, unknown> = {
+    id: userId,
+    role,
+    email,
+    display_name: displayName || email.split("@")[0],
+    plan,
+    can_invite_teachers: canInvite,
+    invited_by: invitedBy,
+  };
+
   const { data, error } = await supabase
     .from("profiles")
-    .insert({
-      id: userId,
-      role,
-      email,
-      display_name: displayName || email.split("@")[0],
-    })
+    .insert(insertPayload)
     .select("*")
     .single();
 
   if (error) throw error;
 
-  if (role === "student") {
-    await supabase
-      .from("students")
-      .update({ user_id: userId })
-      .eq("email", email);
+  const profile = data as Profile;
+
+  if (invite && role === "teacher") {
+    await consumeInvite(invite, profile);
+    const { data: refreshed } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", userId)
+      .single();
+    if (refreshed) return refreshed as Profile;
   }
 
-  return data as Profile;
+  if (role === "student") {
+    await supabase.from("students").update({ user_id: userId }).eq("email", email);
+  }
+
+  return profile;
 }
 
-export async function requireTeacher() {
+export async function requireTeacher(): Promise<Profile> {
   const profile = await getProfile();
-  if (!profile || profile.role !== "teacher") {
+  if (!profile || !isTeacherRole(profile.role)) {
+    throw new Error("Unauthorized");
+  }
+  return profile;
+}
+
+export async function requireSuperuser(): Promise<Profile> {
+  const profile = await getProfile();
+  if (!profile || profile.role !== "superuser") {
     throw new Error("Unauthorized");
   }
   return profile;

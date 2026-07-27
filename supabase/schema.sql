@@ -1,4 +1,8 @@
--- English LMS schema (run in Supabase SQL editor)
+-- English LMS base schema (run in Supabase SQL editor).
+--
+-- Run this first, then every file in supabase/migrations/ in filename order.
+-- The migrations add multi-teacher isolation, invites and usage quotas, and
+-- they replace several of the policies defined here.
 
 create extension if not exists "pgcrypto";
 

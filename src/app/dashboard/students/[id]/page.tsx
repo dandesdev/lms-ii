@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { redirect, notFound } from "next/navigation";
 import { getProfile } from "@/lib/auth";
+import { isTeacherRole } from "@/types/database";
 import { getStudentClasses, getStudentSummary } from "@/lib/data/classes";
 import { StudentClassesPanel } from "@/components/student-classes-panel";
 import { RouteLoading } from "@/components/route-loading";
@@ -11,7 +12,7 @@ export default async function StudentDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const profile = await getProfile();
-  if (!profile || profile.role !== "teacher") {
+  if (!profile || !isTeacherRole(profile.role)) {
     redirect("/login");
   }
 
