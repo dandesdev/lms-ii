@@ -27,7 +27,7 @@ This lives in `lms/` and is **completely separate** from the local teacher dashb
 
 1. Create a project at [supabase.com](https://supabase.com)
 2. Run the SQL in [`supabase/schema.sql`](supabase/schema.sql)
-3. Run migrations in [`supabase/migrations/`](supabase/migrations/) (including `20260727_multi_tenant_invites_quotas.sql` and `20260731_student_claim_tokens.sql`)
+3. Run migrations in [`supabase/migrations/`](supabase/migrations/) (including `20260727_multi_tenant_invites_quotas.sql`, `20260731_student_claim_tokens.sql`, and `20260804_class_editor_theme.sql`)
 4. Ensure storage buckets: `class-images` (public), `lms-data` (private)
 5. Copy your project URL, anon key, and service role key
 

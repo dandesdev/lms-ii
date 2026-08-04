@@ -4,6 +4,7 @@ import { requireTeacher } from "@/lib/auth";
 import { revalidateClassData } from "@/lib/data/revalidate-class-data";
 import type { ClassStatus } from "@/types/database";
 import { recordUsageSnapshot } from "@/lib/usage/meter";
+import { parseEditorTheme } from "@/lib/editor-theme";
 
 const IMAGES_BUCKET = "class-images";
 
@@ -21,9 +22,9 @@ export async function PATCH(
     await requireTeacher();
     const { id } = await params;
     const body = await request.json();
-    const { status, title, started } = body;
+    const { status, title, started, editor_theme } = body;
 
-    const updates: Record<string, string | null> = {};
+    const updates: Record<string, string | null | object> = {};
     if (typeof status === "string" && ALLOWED_STATUSES.has(status as ClassStatus)) {
       updates.status = status;
     }
@@ -34,6 +35,10 @@ export async function PATCH(
       updates.started_at = new Date().toISOString();
     } else if (started === false) {
       updates.started_at = null;
+    }
+    if (editor_theme !== undefined) {
+      const parsed = parseEditorTheme(editor_theme);
+      updates.editor_theme = parsed ?? {};
     }
 
     if (Object.keys(updates).length === 0) {

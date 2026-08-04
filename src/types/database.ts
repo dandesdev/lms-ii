@@ -1,3 +1,5 @@
+import type { EditorTheme } from "@/lib/editor-theme";
+
 export type UserRole = "superuser" | "teacher" | "student";
 export type ClassStatus = "draft" | "published" | "archived";
 
@@ -40,6 +42,7 @@ export interface ClassRecord {
   share_token: string;
   markdown_source: string | null;
   liveblocks_room_id: string;
+  editor_theme?: EditorTheme | null;
   created_at: string;
   updated_at: string;
   started_at: string | null;

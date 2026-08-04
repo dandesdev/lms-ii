@@ -143,7 +143,7 @@ export default function ClaimPage() {
               </p>
             )}
             {claimError && (
-              <div className="space-y-3 rounded-md border border-[#e0d6c2] bg-[#fffdf8] p-3 text-[#1e4d3a]">
+              <div className="space-y-3 rounded-md border border-editor-chrome bg-[#fffdf8] p-3 text-[#1e4d3a]">
                 <p>{claimError}</p>
                 <Button
                   variant="outline"

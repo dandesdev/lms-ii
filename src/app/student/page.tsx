@@ -30,7 +30,7 @@ export default async function StudentPortalPage() {
 
   return (
     <main className="flex min-h-screen flex-col bg-[#f5f0e6]">
-      <header className="border-b border-[#e0d6c2] bg-[#fffdf8]">
+      <header className="border-b border-editor-chrome bg-[#fffdf8]">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-2">
             <GraduationCap className="h-6 w-6 text-[#1e4d3a]" />

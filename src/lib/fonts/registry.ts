@@ -24,9 +24,16 @@ export const EDITOR_FONTS: EditorFont[] = [
   {
     id: "inter",
     label: "Inter",
-    cssFamily: null,
+    cssFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
     googleFamily: "Inter",
     googleAxis: "ital,opsz,wght@0,14..32,100..900;1,14..32,100..900",
+    core: true,
+  },
+  {
+    id: "playful",
+    label: "Playful",
+    cssFamily: '"Architects Daughter", "Fraunces", cursive',
+    googleFamily: "Architects Daughter",
     core: true,
   },
   {
@@ -61,6 +68,7 @@ export function matchEditorFont(
   }
   const lower = fontFamily.toLowerCase();
   return EDITOR_FONTS.find((f) => {
+    if (f.id === "playful" && lower.includes("architects daughter")) return true;
     if (f.cssFamily && lower.includes(f.label.toLowerCase())) return true;
     if (f.googleFamily && lower.includes(f.googleFamily.toLowerCase())) {
       return true;

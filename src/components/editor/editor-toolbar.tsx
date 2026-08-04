@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import {
+  $getNodeByKey,
   $getSelection,
   $isRangeSelection,
   FORMAT_TEXT_COMMAND,
@@ -16,10 +17,15 @@ import { $isTableSelection } from "@lexical/table";
 import {
   $createHeadingNode,
   $isHeadingNode,
+  type HeadingNode,
 } from "@lexical/rich-text";
 import { $setBlocksType } from "@lexical/selection";
 import { $createParagraphNode } from "lexical";
-import { $getNearestNodeOfType, mergeRegister } from "@lexical/utils";
+import {
+  $findMatchingParent,
+  $getNearestNodeOfType,
+  mergeRegister,
+} from "@lexical/utils";
 import { $isListNode, ListNode } from "@lexical/list";
 import {
   Bold,
@@ -61,6 +67,17 @@ import {
 } from "./toolbar-ui";
 import { ToolbarZoomControls } from "./present-mode";
 import { cn } from "@/lib/utils";
+import {
+  defaultHeadingTheme,
+  headingLabel,
+  isHeadingTag,
+} from "@/lib/editor-theme";
+import { useHeadingThemeOptional } from "./heading-theme-context";
+import {
+  $applyThemeToAllHeadings,
+  $captureHeadingStyle,
+} from "./heading-style";
+import { ensureFontForCssFamily } from "@/lib/fonts/ensure-font";
 
 function ToolbarGroup({
   vertical,
@@ -172,7 +189,9 @@ function ToolBtn({
 
 function BlockTypeSelector({ compact = false }: { compact?: boolean }) {
   const [editor] = useLexicalComposerContext();
+  const headingTheme = useHeadingThemeOptional();
   const [block, setBlock] = useState("paragraph");
+  const [headingKey, setHeadingKey] = useState<string | null>(null);
 
   useEffect(() => {
     return editor.registerCommand(
@@ -182,14 +201,15 @@ function BlockTypeSelector({ compact = false }: { compact?: boolean }) {
           const selection = $getSelection();
           if (!$isRangeSelection(selection)) return;
           const anchor = selection.anchor.getNode();
-          const element =
-            anchor.getKey() === "root"
-              ? anchor
-              : anchor.getTopLevelElementOrThrow();
-          if ($isHeadingNode(element)) {
-            setBlock(element.getTag());
+          // Headings live inside EditorSectionNode, so getTopLevelElement() is
+          // the section — walk parents for the actual heading/list block.
+          const heading = $findMatchingParent(anchor, $isHeadingNode);
+          if (heading) {
+            setBlock(heading.getTag());
+            setHeadingKey(heading.getKey());
             return;
           }
+          setHeadingKey(null);
           const list = $getNearestNodeOfType(anchor, ListNode);
           if ($isListNode(list)) {
             setBlock("paragraph");
@@ -205,6 +225,48 @@ function BlockTypeSelector({ compact = false }: { compact?: boolean }) {
 
   const active = BLOCK_OPTIONS.find((o) => o.value === block) ?? BLOCK_OPTIONS[0];
   const triggerLabel = block === "paragraph" ? "T" : compact ? "H" : `H${block.replace("h", "")}`;
+  const headingTag = isHeadingTag(block) ? block : null;
+
+  const makeThisStyle = () => {
+    if (!headingTag || !headingTheme) return;
+    let captured = defaultHeadingTheme(headingTag);
+    editor.update(() => {
+      let heading: HeadingNode | null = null;
+      if (headingKey) {
+        const node = $getNodeByKey(headingKey);
+        if ($isHeadingNode(node) && node.getTag() === headingTag) {
+          heading = node;
+        }
+      }
+      if (!heading) {
+        const selection = $getSelection();
+        if ($isRangeSelection(selection)) {
+          const found = $findMatchingParent(
+            selection.anchor.getNode(),
+            $isHeadingNode
+          );
+          if (found && found.getTag() === headingTag) heading = found;
+        }
+      }
+      if (!heading) return;
+      captured = $captureHeadingStyle(heading);
+      $applyThemeToAllHeadings(headingTag, captured);
+    });
+    if (captured.fontFamily) {
+      void ensureFontForCssFamily(captured.fontFamily);
+    }
+    headingTheme.setLevelTheme(headingTag, captured);
+  };
+
+  const resetToDefaults = () => {
+    if (!headingTag || !headingTheme) return;
+    const defaults = defaultHeadingTheme(headingTag);
+    editor.update(() => {
+      $applyThemeToAllHeadings(headingTag, defaults, { clearSize: true });
+    });
+    void ensureFontForCssFamily(defaults.fontFamily ?? "");
+    headingTheme.setLevelTheme(headingTag, null);
+  };
 
   return (
     <DropdownMenu>
@@ -219,7 +281,7 @@ function BlockTypeSelector({ compact = false }: { compact?: boolean }) {
           {triggerLabel}
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-44 border bg-popover shadow-lg">
+      <DropdownMenuContent align="start" className="w-60 border bg-popover shadow-lg">
         <DropdownMenuLabel>Turn into</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {BLOCK_OPTIONS.map((opt) => (
@@ -228,6 +290,7 @@ function BlockTypeSelector({ compact = false }: { compact?: boolean }) {
             onSelect={() => {
               editor.update(() => opt.apply());
               setBlock(opt.value);
+              setHeadingKey(null);
             }}
             className={cn(block === opt.value && "bg-accent")}
           >
@@ -237,6 +300,17 @@ function BlockTypeSelector({ compact = false }: { compact?: boolean }) {
             {opt.label}
           </DropdownMenuItem>
         ))}
+        {headingTag && headingTheme && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => makeThisStyle()}>
+              Make this the {headingLabel(headingTag)} style
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => resetToDefaults()}>
+              Reset to defaults
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

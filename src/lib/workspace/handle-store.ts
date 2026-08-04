@@ -47,12 +47,29 @@ export async function clearWorkspaceHandle(): Promise<void> {
   db.close();
 }
 
+/** Read-only check — safe to call without a user gesture (e.g. on page load). */
+export async function hasHandlePermission(
+  handle: FileSystemDirectoryHandle,
+  mode: FileSystemPermissionMode = "read"
+): Promise<boolean> {
+  return (await handle.queryPermission({ mode })) === "granted";
+}
+
+/**
+ * Ensures permission is granted. May call `requestPermission`, which browsers
+ * only allow inside a transient user activation (click / tap). Callers that
+ * run on mount should use `hasHandlePermission` instead.
+ */
 export async function verifyHandlePermission(
   handle: FileSystemDirectoryHandle,
   mode: FileSystemPermissionMode = "read"
 ): Promise<boolean> {
-  const current = await handle.queryPermission({ mode });
-  if (current === "granted") return true;
-  const requested = await handle.requestPermission({ mode });
-  return requested === "granted";
+  if (await hasHandlePermission(handle, mode)) return true;
+  try {
+    const requested = await handle.requestPermission({ mode });
+    return requested === "granted";
+  } catch {
+    // SecurityError: "User activation is required to request permissions."
+    return false;
+  }
 }

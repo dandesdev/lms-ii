@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,12 +38,26 @@ export function StudentAccountPanel({
   const [busy, setBusy] = useState<"link" | "unlink" | "regen" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  useEffect(() => {
+  // Sync local optimistic state when server props change (e.g. after router.refresh).
+  // Adjust during render instead of in an effect to avoid cascading renders.
+  const [prevAccount, setPrevAccount] = useState({
+    claimToken,
+    userId,
+    linkedEmail,
+    claimedAt,
+  });
+  if (
+    claimToken !== prevAccount.claimToken ||
+    userId !== prevAccount.userId ||
+    linkedEmail !== prevAccount.linkedEmail ||
+    claimedAt !== prevAccount.claimedAt
+  ) {
+    setPrevAccount({ claimToken, userId, linkedEmail, claimedAt });
     setToken(claimToken);
     setLinked(Boolean(userId));
     setCurrentLinkedEmail(linkedEmail);
     setCurrentClaimedAt(claimedAt);
-  }, [claimToken, userId, linkedEmail, claimedAt]);
+  }
 
   const claimUrl =
     typeof window !== "undefined"
@@ -104,7 +118,7 @@ export function StudentAccountPanel({
       </CardHeader>
       <CardContent className="space-y-4 text-sm text-[#6b6558]">
         {!token ? (
-          <div className="rounded-md border border-[#e0d6c2] bg-[#fff8e8] px-3 py-2 text-[#1e4d3a]">
+          <div className="rounded-md border border-editor-chrome bg-[#fff8e8] px-3 py-2 text-[#1e4d3a]">
             Claim links need a database migration. In the Supabase SQL editor,
             run{" "}
             <code className="font-mono text-xs">
@@ -120,7 +134,7 @@ export function StudentAccountPanel({
         )}
 
         {linked ? (
-          <div className="rounded-md border border-[#e0d6c2] bg-[#fffdf8] px-3 py-2 text-[#1e4d3a]">
+          <div className="rounded-md border border-editor-chrome bg-[#fffdf8] px-3 py-2 text-[#1e4d3a]">
             Linked to{" "}
             <span className="font-medium">
               {currentLinkedEmail ?? "an account"}
@@ -222,7 +236,7 @@ export function StudentAccountPanel({
                 placeholder="Student login email"
                 value={linkEmail}
                 onChange={(e) => setLinkEmail(e.target.value)}
-                className="min-w-[220px] flex-1"
+                className="min-w-55 flex-1"
                 required
               />
               <Button type="submit" size="sm" disabled={busy !== null}>

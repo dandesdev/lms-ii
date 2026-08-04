@@ -1,5 +1,6 @@
 import { cacheLife, cacheTag } from "next/cache";
 import { createServiceClient } from "@/lib/supabase/server";
+import type { EditorTheme } from "@/lib/editor-theme";
 import type { ClassStatus } from "@/types/database";
 import type { LmsClassCounts } from "@/types/dashboard";
 
@@ -22,6 +23,7 @@ export type ClassPageRecord = {
   markdown_source: string | null;
   liveblocks_room_id: string;
   started_at: string | null;
+  editor_theme: EditorTheme | null;
 };
 
 export type StudentSummaryRow = {
@@ -155,13 +157,27 @@ export async function getClassPageRecord(
   cacheTag(tags.classRecord(classId));
 
   const supabase = createServiceClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("classes")
     .select(
-      "id, student_id, title, status, share_token, markdown_source, liveblocks_room_id, started_at"
+      "id, student_id, title, status, share_token, markdown_source, liveblocks_room_id, started_at, editor_theme"
     )
     .eq("id", classId)
     .maybeSingle();
+
+  // Before migration 20260804_class_editor_theme.sql the column is missing.
+  if (error) {
+    const { data: basic } = await supabase
+      .from("classes")
+      .select(
+        "id, student_id, title, status, share_token, markdown_source, liveblocks_room_id, started_at"
+      )
+      .eq("id", classId)
+      .maybeSingle();
+    if (!basic) return null;
+    return { ...basic, editor_theme: null };
+  }
+
   return data as ClassPageRecord | null;
 }
 

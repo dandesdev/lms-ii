@@ -11,6 +11,7 @@ import {
 import { scanWorkspace } from "@/lib/workspace/scan-browser";
 import {
   clearWorkspaceHandle,
+  hasHandlePermission,
   loadWorkspaceHandle,
   saveWorkspaceHandle,
   verifyHandlePermission,
@@ -184,12 +185,26 @@ export const WorkspaceController = forwardRef<
   }, [connectHandle, publishStatus]);
 
   const syncNow = useCallback(async () => {
-    if (!handleRef.current) {
+    const handle = handleRef.current;
+    if (!handle) {
       await pickFolder();
       return;
     }
-    await runSync(handleRef.current, "manual");
-  }, [pickFolder, runSync]);
+    // Re-grant may be needed after a reload; this runs from a click so
+    // requestPermission is allowed.
+    const ok = await verifyHandlePermission(handle, "read");
+    if (!ok) {
+      publishStatus(
+        "error",
+        "Folder access expired — pick the workspace folder again."
+      );
+      await pickFolder();
+      return;
+    }
+    setFolder(handle.name);
+    startObserver(handle);
+    await runSync(handle, "manual");
+  }, [pickFolder, publishStatus, runSync, setFolder, startObserver]);
 
   const disconnect = useCallback(async () => {
     observerRef.current?.disconnect();
@@ -216,9 +231,16 @@ export const WorkspaceController = forwardRef<
     void (async () => {
       const saved = await loadWorkspaceHandle();
       if (!saved) return;
-      const ok = await verifyHandlePermission(saved, "read");
-      if (!ok) return;
+      // Keep the handle so Sync can re-request permission from a user click.
+      // Never call requestPermission here — browsers require user activation.
       handleRef.current = saved;
+      if (!(await hasHandlePermission(saved, "read"))) {
+        publishStatus(
+          "idle",
+          "Click Sync to reconnect your workspace folder."
+        );
+        return;
+      }
       setFolder(saved.name);
       startObserver(saved);
     })();
@@ -226,7 +248,7 @@ export const WorkspaceController = forwardRef<
       observerRef.current?.disconnect();
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [setFolder, startObserver]);
+  }, [publishStatus, setFolder, startObserver]);
 
   return null;
 });

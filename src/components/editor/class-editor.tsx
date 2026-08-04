@@ -54,6 +54,8 @@ import {
 import { usePresentMode } from "./present-mode";
 import { MarkUpModeProvider } from "./mark-up-mode-context";
 import { EditorColorsProvider } from "./editor-colors-context";
+import { HeadingThemeProvider } from "./heading-theme-context";
+import { HeadingThemePlugin } from "./heading-theme-plugin";
 import { MarkUpModeChrome } from "./mark-up-mode-chrome";
 import { LiveblocksDisconnectOnHide } from "./liveblocks-disconnect-on-hide";
 import dynamic from "next/dynamic";
@@ -62,6 +64,7 @@ import { cn } from "@/lib/utils";
 import { Waiting } from "@/components/waiting";
 import { useClassBoot } from "@/components/class-boot/class-boot-provider";
 import { EditorFontsBootstrap } from "./editor-fonts-bootstrap";
+import type { EditorTheme } from "@/lib/editor-theme";
 
 /** Teacher-only mark-up UI — loaded only when enableMarkUpMode is true. */
 const MarkUpModeToggle = dynamic(
@@ -112,6 +115,7 @@ function EditorInner({
   backHref,
   toolbarRight,
   enableMarkUpMode,
+  editorTheme,
 }: {
   classId: string;
   markdownSource: string | null;
@@ -119,6 +123,7 @@ function EditorInner({
   backHref?: string;
   toolbarRight?: ReactNode;
   enableMarkUpMode?: boolean;
+  editorTheme?: EditorTheme | null;
 }) {
   const { zoom, setZoom, isFullscreen, toggleFullscreen } = usePresentMode();
   const isReady = useIsEditorReady();
@@ -157,10 +162,10 @@ function EditorInner({
         theme: {
           paragraph: "mb-2 leading-relaxed",
           heading: {
-            h1: "text-3xl font-bold mb-4 mt-6",
-            h2: "text-2xl font-semibold mb-3 mt-5",
-            h3: "text-xl font-semibold mb-2 mt-4",
-            h4: "text-lg font-semibold mb-2 mt-3",
+            h1: "font-playful text-3xl font-bold mb-4 mt-6",
+            h2: "font-playful text-2xl font-semibold mb-3 mt-5",
+            h3: "font-playful text-xl font-semibold mb-2 mt-4",
+            h4: "font-playful text-lg font-semibold mb-2 mt-3",
           },
           list: {
             ul: "list-disc mb-2",
@@ -268,6 +273,7 @@ function EditorInner({
         <TablePlugin />
         <SectionStylePlugin />
         <DefaultTextColorPlugin />
+        <HeadingThemePlugin />
         <SectionMergePlugin />
         {enableMarkUpMode && <MarkUpWordPlugin />}
         {!readOnly && (
@@ -296,21 +302,23 @@ function EditorInner({
   return (
     <LexicalComposer initialConfig={initialConfig}>
       <EditorColorsProvider>
-        <MarkUpModeProvider>
-          <ClassLiveblocksPlugin>
-            <div
-              className={cn(
-                "flex h-screen min-h-0",
-                vertical ? "flex-row" : "flex-col"
-              )}
-            >
-              {(dock === "top" || dock === "left") && toolbar}
-              {editorPane}
-              {(dock === "bottom" || dock === "right") && toolbar}
-            </div>
-            {floatingControls}
-          </ClassLiveblocksPlugin>
-        </MarkUpModeProvider>
+        <HeadingThemeProvider classId={classId} initialTheme={editorTheme}>
+          <MarkUpModeProvider>
+            <ClassLiveblocksPlugin>
+              <div
+                className={cn(
+                  "flex h-screen min-h-0",
+                  vertical ? "flex-row" : "flex-col"
+                )}
+              >
+                {(dock === "top" || dock === "left") && toolbar}
+                {editorPane}
+                {(dock === "bottom" || dock === "right") && toolbar}
+              </div>
+              {floatingControls}
+            </ClassLiveblocksPlugin>
+          </MarkUpModeProvider>
+        </HeadingThemeProvider>
       </EditorColorsProvider>
     </LexicalComposer>
   );
@@ -325,6 +333,7 @@ export function ClassEditor({
   backHref,
   toolbarRight,
   enableMarkUpMode,
+  editorTheme,
 }: {
   roomId: string;
   classId: string;
@@ -334,6 +343,7 @@ export function ClassEditor({
   backHref?: string;
   toolbarRight?: ReactNode;
   enableMarkUpMode?: boolean;
+  editorTheme?: EditorTheme | null;
 }) {
   const boot = useClassBoot();
 
@@ -365,6 +375,7 @@ export function ClassEditor({
             backHref={backHref}
             toolbarRight={toolbarRight}
             enableMarkUpMode={enableMarkUpMode}
+            editorTheme={editorTheme}
           />
         </ClientSideSuspense>
       </RoomProvider>

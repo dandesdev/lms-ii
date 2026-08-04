@@ -37,6 +37,7 @@ create table if not exists public.classes (
   share_token text not null unique default encode(gen_random_bytes(16), 'hex'),
   markdown_source text,
   liveblocks_room_id text not null unique,
+  editor_theme jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   started_at timestamptz

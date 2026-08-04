@@ -55,7 +55,7 @@ export function AddStudentForm() {
             placeholder="Name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="min-w-[160px] flex-1"
+            className="min-w-40 flex-1"
           />
           <Input
             placeholder="Level (optional)"
@@ -68,7 +68,7 @@ export function AddStudentForm() {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="min-w-[180px] flex-1"
+            className="min-w-45 flex-1"
           />
           <Button type="submit" disabled={loading}>
             Add

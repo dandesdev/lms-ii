@@ -29,6 +29,7 @@ export default async function ShareClassPage({
         roomId={roomId}
         classId={classRecord.id}
         markdownSource={classRecord.markdown_source}
+        editorTheme={classRecord.editor_theme}
         shareToken={shareToken}
         toolbarRight={
           <Button variant="outline" size="sm" asChild>

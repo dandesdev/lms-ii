@@ -74,6 +74,7 @@ async function ClassPageBody({
         roomId={roomId}
         classId={classRecord.id}
         markdownSource={classRecord.markdown_source}
+        editorTheme={classRecord.editor_theme}
         backHref={
           isTeacher
             ? `/dashboard/students/${classRecord.student_id}`
