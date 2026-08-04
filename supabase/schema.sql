@@ -22,6 +22,8 @@ create table if not exists public.students (
   level text,
   email text,
   user_id uuid unique references auth.users (id) on delete set null,
+  claim_token text not null unique default encode(gen_random_bytes(16), 'hex'),
+  claimed_at timestamptz,
   created_at timestamptz not null default now()
 );
 

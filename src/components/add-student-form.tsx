@@ -64,7 +64,7 @@ export function AddStudentForm() {
             className="w-36"
           />
           <Input
-            placeholder="Email (optional)"
+            placeholder="Contact email (optional)"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}

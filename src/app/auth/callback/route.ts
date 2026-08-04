@@ -7,6 +7,7 @@ export async function GET(request: Request) {
   const code = searchParams.get("code");
   const next = searchParams.get("next") ?? "/";
   const inviteCode = searchParams.get("invite");
+  const claimToken = searchParams.get("claim");
 
   if (code) {
     const supabase = await createClient();
@@ -16,12 +17,17 @@ export async function GET(request: Request) {
         data: { user },
       } = await supabase.auth.getUser();
       if (user?.email) {
-        await ensureProfile(
-          user.id,
-          user.email,
-          user.user_metadata?.full_name,
-          inviteCode
-        );
+        try {
+          await ensureProfile(
+            user.id,
+            user.email,
+            user.user_metadata?.full_name,
+            inviteCode,
+            claimToken
+          );
+        } catch {
+          // Profile/claim errors still land the user in-app; claim page can retry.
+        }
       }
       return NextResponse.redirect(`${origin}${next}`);
     }

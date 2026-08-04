@@ -17,16 +17,22 @@ import { Eye, EyeOff, GraduationCap } from "lucide-react";
 type LoginFormProps = {
   next?: string;
   inviteCode?: string;
+  claimToken?: string;
   defaultEmail?: string;
 };
 
-export function LoginForm({ next, inviteCode, defaultEmail }: LoginFormProps) {
+export function LoginForm({
+  next,
+  inviteCode,
+  claimToken,
+  defaultEmail,
+}: LoginFormProps) {
   const [email, setEmail] = useState(defaultEmail ?? "");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const allowTeacherSignup = Boolean(inviteCode);
+  const allowSignup = Boolean(inviteCode || claimToken);
   const [mode, setMode] = useState<"login" | "signup">(
-    inviteCode ? "signup" : "login"
+    allowSignup ? "signup" : "login"
   );
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -36,12 +42,29 @@ export function LoginForm({ next, inviteCode, defaultEmail }: LoginFormProps) {
     if (defaultEmail) setEmail(defaultEmail);
   }, [defaultEmail]);
 
-  async function ensureProfileWithInvite() {
-    await fetch("/api/auth/ensure-profile", {
+  async function ensureProfileWithCodes() {
+    const res = await fetch("/api/auth/ensure-profile", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ inviteCode: inviteCode ?? null }),
+      body: JSON.stringify({
+        inviteCode: inviteCode ?? null,
+        claimToken: claimToken ?? null,
+      }),
     });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(
+        typeof data.error === "string" ? data.error : "Could not finish signup"
+      );
+    }
+  }
+
+  function authCallbackUrl(pathNext: string) {
+    const params = new URLSearchParams();
+    params.set("next", pathNext);
+    if (inviteCode) params.set("invite", inviteCode);
+    if (claimToken) params.set("claim", claimToken);
+    return `${window.location.origin}/auth/callback?${params.toString()}`;
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -49,32 +72,40 @@ export function LoginForm({ next, inviteCode, defaultEmail }: LoginFormProps) {
     setLoading(true);
     setMessage("");
     const supabase = createClient();
+    const destination = next || (claimToken ? "/student" : "/");
 
     try {
       if (mode === "signup") {
-        if (!allowTeacherSignup) {
-          throw new Error("Teacher accounts require an invite link.");
+        if (!allowSignup) {
+          throw new Error(
+            inviteCode
+              ? "Teacher accounts require an invite link."
+              : "Student accounts require a claim link from your teacher."
+          );
         }
-        const inviteQuery = inviteCode
-          ? `&invite=${encodeURIComponent(inviteCode)}`
-          : "";
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
-            emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next || "/")}${inviteQuery}`,
+            emailRedirectTo: authCallbackUrl(destination),
           },
         });
         if (error) throw error;
-        setMessage("Check your email to confirm signup.");
+        if (data.session) {
+          await ensureProfileWithCodes();
+          router.push(destination);
+          router.refresh();
+        } else {
+          setMessage("Check your email to confirm signup.");
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
         if (error) throw error;
-        await ensureProfileWithInvite();
-        router.push(next || "/");
+        await ensureProfileWithCodes();
+        router.push(destination);
         router.refresh();
       }
     } catch (err) {
@@ -139,9 +170,13 @@ export function LoginForm({ next, inviteCode, defaultEmail }: LoginFormProps) {
             </Link>
           </p>
         )}
-        {allowTeacherSignup && (
+        {allowSignup && (
           <p className="mt-3 text-center text-sm text-[#6b6558]">
-            {mode === "login" ? "New teacher?" : "Already have an account?"}{" "}
+            {mode === "login"
+              ? inviteCode
+                ? "New teacher?"
+                : "New student?"
+              : "Already have an account?"}{" "}
             <button
               type="button"
               className="font-medium text-[#1e4d3a] underline"
@@ -151,9 +186,10 @@ export function LoginForm({ next, inviteCode, defaultEmail }: LoginFormProps) {
             </button>
           </p>
         )}
-        {!allowTeacherSignup && mode === "login" && (
+        {!allowSignup && mode === "login" && (
           <p className="mt-3 text-center text-sm text-[#6b6558]">
-            Teacher accounts are invite-only. Students sign in with the email their teacher added.
+            Teacher accounts are invite-only. Students create an account from
+            the claim link their teacher shares.
           </p>
         )}
         {message && (

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StudentPortalClassLink } from "@/components/student-portal-class-link";
 import { StudentPortalListRefresh } from "@/components/student-portal-list-refresh";
+import { SessionEmailFooter } from "@/components/session-email-footer";
 import { BookOpen, GraduationCap, LogOut } from "lucide-react";
 
 export default async function StudentPortalPage() {
@@ -28,7 +29,7 @@ export default async function StudentPortalPage() {
     .maybeSingle();
 
   return (
-    <main className="min-h-screen bg-[#f5f0e6]">
+    <main className="flex min-h-screen flex-col bg-[#f5f0e6]">
       <header className="border-b border-[#e0d6c2] bg-[#fffdf8]">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-2">
@@ -49,7 +50,7 @@ export default async function StudentPortalPage() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-4xl p-6">
+      <div className="mx-auto w-full max-w-4xl flex-1 p-6">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
@@ -61,7 +62,8 @@ export default async function StudentPortalPage() {
             {!student && (
               <p className="py-6 text-center text-[#6b6558]">
                 Your account is not linked to a student profile yet. Ask your
-                teacher to add your email when creating your profile.
+                teacher for a claim link, or to link this login email from their
+                dashboard.
               </p>
             )}
             {student && (
@@ -78,6 +80,8 @@ export default async function StudentPortalPage() {
           </CardContent>
         </Card>
       </div>
+
+      <SessionEmailFooter email={profile.email} />
     </main>
   );
 }

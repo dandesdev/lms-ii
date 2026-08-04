@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { claimStudentForUser } from "@/lib/claims";
 import { consumeInvite, getInviteByCode } from "@/lib/invites";
 import type { Profile, UserRole } from "@/types/database";
 import { isTeacherRole } from "@/types/database";
@@ -27,11 +28,24 @@ export const getProfile = cache(async (): Promise<Profile | null> => {
   return data as Profile | null;
 });
 
+async function applyStudentClaim(
+  profile: Profile,
+  claimToken: string | null | undefined,
+  email: string
+): Promise<void> {
+  if (!claimToken) return;
+  if (isTeacherRole(profile.role)) {
+    throw new Error("Teacher accounts cannot claim a student profile.");
+  }
+  await claimStudentForUser(claimToken, profile.id, email);
+}
+
 export async function ensureProfile(
   userId: string,
   email: string,
   displayName?: string,
-  inviteCode?: string | null
+  inviteCode?: string | null,
+  claimToken?: string | null
 ): Promise<Profile> {
   const supabase = createServiceClient();
 
@@ -42,7 +56,9 @@ export async function ensureProfile(
     .maybeSingle();
 
   if (existing) {
-    return existing as Profile;
+    const profile = existing as Profile;
+    await applyStudentClaim(profile, claimToken, email);
+    return profile;
   }
 
   let role: UserRole = resolveBootstrapRole(email);
@@ -51,6 +67,7 @@ export async function ensureProfile(
   let invitedBy: string | null = null;
   let invite: Awaited<ReturnType<typeof getInviteByCode>> = null;
 
+  // Teacher invite wins over student claim when both are somehow present.
   if (role !== "superuser" && inviteCode) {
     invite = await getInviteByCode(inviteCode);
     if (invite && !invite.used_at && !invite.revoked_at) {
@@ -60,6 +77,9 @@ export async function ensureProfile(
       invitedBy = invite.created_by;
     }
   }
+
+  // Without a claim token, new student profiles stay unlinked until the
+  // student opens a claim link or the teacher links them from the dashboard.
 
   const insertPayload: Record<string, unknown> = {
     id: userId,
@@ -92,7 +112,7 @@ export async function ensureProfile(
   }
 
   if (role === "student") {
-    await supabase.from("students").update({ user_id: userId }).eq("email", email);
+    await applyStudentClaim(profile, claimToken, email);
   }
 
   return profile;

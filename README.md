@@ -17,7 +17,8 @@ This lives in `lms/` and is **completely separate** from the local teacher dashb
 - Collaborative editor: formatting, sections, images, present/zoom mode
 - Realtime co-editing with remote cursors and selection highlights
 - Share links (`/c/[token]`) for guests without login
-- Student portal: published classes for logged-in students
+- Student claim links (`/claim/[token]`) so students can sign up with any email
+- Student portal: published classes for logged-in linked students
 - Multi-teacher: invite-only onboarding, superuser admin usage + alerts
 
 ## Setup
@@ -26,7 +27,7 @@ This lives in `lms/` and is **completely separate** from the local teacher dashb
 
 1. Create a project at [supabase.com](https://supabase.com)
 2. Run the SQL in [`supabase/schema.sql`](supabase/schema.sql)
-3. Run migrations in [`supabase/migrations/`](supabase/migrations/) (especially `20260727_multi_tenant_invites_quotas.sql`)
+3. Run migrations in [`supabase/migrations/`](supabase/migrations/) (including `20260727_multi_tenant_invites_quotas.sql` and `20260731_student_claim_tokens.sql`)
 4. Ensure storage buckets: `class-images` (public), `lms-data` (private)
 5. Copy your project URL, anon key, and service role key
 
@@ -78,7 +79,7 @@ Open [http://localhost:3000](http://localhost:3000).
 1. **Prepare files** on your computer (`control/journal.md`, `students/...`) — see [/docs/getting-started](/docs/getting-started)
 2. **Sign in** as superuser or invited teacher at `/login`
 3. On the dashboard, **Connect workspace** and **Sync now** (or run `npm run sync` from `lms/`)
-4. Open a student → edit classes, **Publish**, share link or student login
+4. Open a student → edit classes, **Publish**, share the class link for live class, or copy the **claim link** so they can create a login
 5. Superuser: monitor platform usage at `/admin/usage` and create teacher invites at `/admin/invites`
 
 ## Routes
@@ -90,11 +91,12 @@ Open [http://localhost:3000](http://localhost:3000).
 | `/admin/usage` | Superuser | Platform + per-teacher usage |
 | `/admin/invites` | Superuser | Create/revoke teacher invites |
 | `/invite/[code]` | Invited teacher | Signup with invite |
-| `/dashboard/students/[id]` | Teacher | Import classes, class list |
+| `/claim/[token]` | Student | Signup / sign-in to link account |
+| `/dashboard/students/[id]` | Teacher | Classes + student account linking |
 | `/class/[id]` | Teacher / linked student | Collaborative editor |
 | `/c/[shareToken]` | Anyone (if published) | Guest collaborative editor |
-| `/student` | Student | Published class list |
-| `/login` | Everyone | Auth |
+| `/student` | Linked student | Published class list |
+| `/login` | Everyone | Auth (signup only via invite/claim) |
 
 ## Sync options
 

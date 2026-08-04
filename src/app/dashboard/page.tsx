@@ -5,6 +5,7 @@ import { loadDashboardSnapshot } from "@/lib/dashboard-snapshot";
 import { getClassCountsByStudent } from "@/lib/data/classes";
 import { DashboardClient } from "@/components/dashboard/dashboard-client";
 import { RouteLoading } from "@/components/route-loading";
+import { SessionEmailFooter } from "@/components/session-email-footer";
 import { isTeacherRole } from "@/types/database";
 
 export default async function DashboardPage() {
@@ -42,10 +43,13 @@ async function DashboardBody() {
   ]);
 
   return (
-    <DashboardClient
-      snapshot={snapshot}
-      classCounts={classCounts}
-      isSuperuser={profile.role === "superuser"}
-    />
+    <>
+      <DashboardClient
+        snapshot={snapshot}
+        classCounts={classCounts}
+        isSuperuser={profile.role === "superuser"}
+      />
+      <SessionEmailFooter email={profile.email} />
+    </>
   );
 }

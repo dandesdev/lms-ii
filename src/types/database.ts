@@ -26,6 +26,8 @@ export interface Student {
   email: string | null;
   user_id: string | null;
   owner_id: string;
+  claim_token: string;
+  claimed_at: string | null;
   created_at: string;
 }
 

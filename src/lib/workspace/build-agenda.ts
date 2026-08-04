@@ -13,13 +13,27 @@ export interface AgendaConfig {
 
 const DEFAULT_KEYWORD = "ii";
 
+/** Normalize a pasted Google Calendar / iCal URL for server-side fetch. */
+export function normalizeIcsUrl(raw: string): string {
+  let url = raw
+    .trim()
+    .replace(/^['"]+|['"]+$/g, "")
+    .replace(/&amp;/gi, "&")
+    .replace(/\s+/g, "");
+
+  // Calendar apps often copy webcal:// — fetch needs https
+  url = url.replace(/^webcal:\/\//i, "https://");
+
+  return url;
+}
+
 export function validateAgendaConfig(input: {
   icsUrl?: string;
   keyword?: string;
   lookAheadDays?: number;
 }): AgendaConfig {
-  const icsUrl = input.icsUrl?.trim() ?? "";
-  if (!/^https?:\/\/.+\.ics(\?.*)?$/i.test(icsUrl)) {
+  const icsUrl = normalizeIcsUrl(input.icsUrl ?? "");
+  if (!/^https:\/\/.+\.ics(\?.*)?$/i.test(icsUrl)) {
     throw new Error(
       "Paste the secret Google Calendar iCal URL (it must end with .ics)."
     );
@@ -31,6 +45,40 @@ export function validateAgendaConfig(input: {
     keyword,
     lookAheadDays: Math.min(30, Math.max(1, input.lookAheadDays ?? 7)),
   };
+}
+
+/**
+ * Google (and some hosts) return 404 to bare Node/fetch clients.
+ * Mimic a normal calendar client.
+ */
+export async function fetchIcsText(icsUrl: string): Promise<string> {
+  const res = await fetch(icsUrl, {
+    redirect: "follow",
+    headers: {
+      Accept: "text/calendar, text/plain, */*",
+      "User-Agent":
+        "Mozilla/5.0 (compatible; EnglishLMS/1.0; +https://github.com) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    },
+    // Avoid Next.js fetch cache serving a stale 404
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    if (res.status === 404) {
+      throw new Error(
+        "Calendar fetch failed: HTTP 404. Use the Secret address in iCal format (not the public one), and paste it again after resetting the secret in Google Calendar if needed."
+      );
+    }
+    throw new Error(`Calendar fetch failed: HTTP ${res.status}`);
+  }
+
+  const text = await res.text();
+  if (!/BEGIN:VCALENDAR/i.test(text)) {
+    throw new Error(
+      "The URL did not return a calendar file. Confirm you copied the Secret iCal address ending in basic.ics."
+    );
+  }
+  return text;
 }
 
 function escapeRegex(s: string): string {
@@ -127,9 +175,7 @@ export async function buildAgendaFromIcs(
 
   let parsed: CalendarResponse;
   try {
-    const res = await fetch(config.icsUrl);
-    if (!res.ok) throw new Error(`Calendar fetch failed: HTTP ${res.status}`);
-    const text = await res.text();
+    const text = await fetchIcsText(config.icsUrl);
     parsed = ical.parseICS(text);
   } catch (e) {
     return {

@@ -53,15 +53,31 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, configured: false });
     }
 
-    const config = validateAgendaConfig({
-      icsUrl: body.icsUrl,
-      keyword: body.keyword,
-      lookAheadDays: body.lookAheadDays,
-    });
-    await saveAgendaConfig(profile.id, config);
+    // Refresh with the saved URL (no need to paste again), or save a new one.
+    let config;
+    if (body.refresh && !body.icsUrl) {
+      config = await loadAgendaConfig(profile.id);
+      if (!config) {
+        return NextResponse.json(
+          { error: "No agenda connected yet — paste the secret iCal URL first." },
+          { status: 400 }
+        );
+      }
+      if (typeof body.keyword === "string" && body.keyword.trim()) {
+        config = { ...config, keyword: body.keyword.trim() };
+      }
+    } else {
+      config = validateAgendaConfig({
+        icsUrl: body.icsUrl,
+        keyword: body.keyword,
+        lookAheadDays: body.lookAheadDays,
+      });
+    }
 
     const snapshot = await loadDashboardSnapshot(profile.id);
     if (!snapshot) {
+      // Only persist after we know the URL shape is valid; fetch still needs students.
+      await saveAgendaConfig(profile.id, config);
       return NextResponse.json({
         ok: true,
         configured: true,
@@ -74,6 +90,16 @@ export async function POST(request: Request) {
       snapshot.dashboard.students,
       studentRecordsFromSummaries(snapshot.dashboard.students)
     );
+
+    // Don't keep a broken URL on first connect / update
+    if (agenda.error) {
+      return NextResponse.json(
+        { error: agenda.error, configured: Boolean(await loadAgendaConfig(profile.id)) },
+        { status: 400 }
+      );
+    }
+
+    await saveAgendaConfig(profile.id, config);
     snapshot.agenda = agenda;
     snapshot.syncedAt = new Date().toISOString();
     await uploadDashboardSnapshot(profile.id, snapshot);

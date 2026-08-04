@@ -28,6 +28,11 @@ export type StudentSummaryRow = {
   id: string;
   name: string;
   level: string | null;
+  email: string | null;
+  user_id: string | null;
+  claim_token: string;
+  claimed_at: string | null;
+  linked_email: string | null;
 };
 
 /** Cache tags — keep in sync with revalidateTag calls in API routes. */
@@ -51,12 +56,53 @@ export async function getStudentSummary(
   cacheTag(tags.student(studentId));
 
   const supabase = createServiceClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("students")
-    .select("id, name, level")
+    .select("id, name, level, email, user_id, claim_token, claimed_at")
     .eq("id", studentId)
     .maybeSingle();
-  return data;
+
+  // Before migration 20260731_student_claim_tokens.sql the claim columns are
+  // missing — fall back so the student page still loads.
+  if (error) {
+    const { data: basic } = await supabase
+      .from("students")
+      .select("id, name, level, email, user_id")
+      .eq("id", studentId)
+      .maybeSingle();
+    if (!basic) return null;
+
+    let linked_email: string | null = null;
+    if (basic.user_id) {
+      const { data: linked } = await supabase
+        .from("profiles")
+        .select("email")
+        .eq("id", basic.user_id)
+        .maybeSingle();
+      linked_email = linked?.email ?? null;
+    }
+
+    return {
+      ...basic,
+      claim_token: "",
+      claimed_at: null,
+      linked_email,
+    };
+  }
+
+  if (!data) return null;
+
+  let linked_email: string | null = null;
+  if (data.user_id) {
+    const { data: linked } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("id", data.user_id)
+      .maybeSingle();
+    linked_email = linked?.email ?? null;
+  }
+
+  return { ...data, linked_email };
 }
 
 export async function getStudentClasses(

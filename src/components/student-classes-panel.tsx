@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CreateClassButton } from "@/components/create-class-button";
 import { ImportMarkdownButton } from "@/components/import-markdown-button";
+import { StudentAccountPanel } from "@/components/student-account-panel";
 import { useClassBoot } from "@/components/class-boot/class-boot-provider";
 import { prefetchClassEditorChunk } from "@/lib/prefetch-class-editor";
 import { useRefreshOnReshow } from "@/hooks/use-refresh-on-reshow";
@@ -61,11 +62,21 @@ export function StudentClassesPanel({
   studentId,
   studentName,
   studentLevel,
+  studentEmail,
+  claimToken,
+  userId,
+  linkedEmail,
+  claimedAt,
   initialClasses,
 }: {
   studentId: string;
   studentName: string;
   studentLevel: string | null;
+  studentEmail: string | null;
+  claimToken: string;
+  userId: string | null;
+  linkedEmail: string | null;
+  claimedAt: string | null;
   initialClasses: StudentClassListItem[];
 }) {
   const [entered, setEntered] = useState(false);
@@ -164,7 +175,15 @@ export function StudentClassesPanel({
         </div>
       </header>
 
-      <div className="mx-auto max-w-4xl p-6">
+      <div className="mx-auto max-w-4xl space-y-6 p-6">
+        <StudentAccountPanel
+          studentId={studentId}
+          email={studentEmail}
+          claimToken={claimToken}
+          userId={userId}
+          linkedEmail={linkedEmail}
+          claimedAt={claimedAt}
+        />
         <Card>
           <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0">
             <CardTitle className="flex items-center gap-2 text-base">

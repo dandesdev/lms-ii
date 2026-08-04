@@ -32,18 +32,23 @@ export function AgendaConnectForm({
     })();
   }, []);
 
-  async function save() {
+  async function save(refreshOnly = false) {
     setSaving(true);
     setMessage("");
     try {
       const res = await fetch("/api/agenda", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ icsUrl, keyword }),
+        body: JSON.stringify(
+          refreshOnly
+            ? { refresh: true, keyword }
+            : { icsUrl, keyword }
+        ),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
       setConfigured(true);
+      if (!refreshOnly) setIcsUrl("");
       setMessage(
         data.agenda
           ? `Connected — ${data.agenda.events?.length ?? 0} upcoming class(es).`
@@ -107,10 +112,26 @@ export function AgendaConnectForm({
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
         />
-        <Button type="button" size="sm" onClick={save} disabled={saving || !icsUrl.trim()}>
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => void save(false)}
+          disabled={saving || !icsUrl.trim()}
+        >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          {configured ? "Update & refresh" : "Connect agenda"}
+          {configured ? "Replace URL" : "Connect agenda"}
         </Button>
+        {configured && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => void save(true)}
+            disabled={saving}
+          >
+            Refresh
+          </Button>
+        )}
         {configured && (
           <Button type="button" size="sm" variant="ghost" onClick={disconnect} disabled={saving}>
             Disconnect
@@ -119,7 +140,7 @@ export function AgendaConnectForm({
       </div>
       {configured && !icsUrl && (
         <p className="font-mono text-[11px] text-muted-foreground">
-          Agenda is connected. Paste a new URL to replace it.
+          Agenda is connected. Use Refresh, or paste a new Secret iCal URL to replace it.
         </p>
       )}
       {message && <p className="text-sm text-muted-foreground">{message}</p>}
